@@ -4,7 +4,6 @@ import android.content.Context
 import com.vidlab.app.data.model.*
 import com.vidlab.app.data.scraper.FilenameSanitizer
 import com.vidlab.app.data.scraper.MetadataScraper
-import com.vidlab.app.data.scraper.ScrapedMetadata
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -160,7 +159,6 @@ class MediaCatalogRepository(
                 val appMetadata = scrapedMeta?.let {
                     MediaMetadata(
                         title = it.title,
-                        overview = it.overview,
                         posterUrl = it.posterUrl,
                         backdropUrl = it.backdropUrl,
                         releaseYear = it.releaseYear,
@@ -230,7 +228,6 @@ class MediaCatalogRepository(
                 val appMetadata = scrapedMeta?.let {
                     MediaMetadata(
                         title = it.title,
-                        overview = it.overview,
                         posterUrl = it.posterUrl,
                         backdropUrl = it.backdropUrl,
                         releaseYear = it.releaseYear,
