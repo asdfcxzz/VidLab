@@ -135,7 +135,11 @@ class MainActivity : ComponentActivity() {
                         MediaDetailScreen(
                             item = selectedItem!!,
                             onBack = { selectedItem = null },
-                            onPlayFile = { file -> launchPlayer(file) }
+                            onPlayFile = { file -> launchPlayer(file) },
+                            onRematch = { item ->
+                                itemToRematch = item
+                                manualTitleQuery = item.title
+                            }
                         )
                     } else {
                         MediaCenterScreen(
@@ -159,7 +163,7 @@ class MainActivity : ComponentActivity() {
                             title = { Text("Fix Match / Rename", color = Color.White, fontSize = 18.sp) },
                             text = {
                                 Column {
-                                    Text("Enter exact title for metadata scraping:", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                                    Text("Enter exact title or IMDb ID (e.g. tt0944947):", color = Color(0xFF9E95B8), fontSize = 12.sp)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     TextField(
                                         value = manualTitleQuery,
@@ -181,6 +185,7 @@ class MainActivity : ComponentActivity() {
                                         val normKey = target.title.lowercase().replace(Regex("[^a-z0-9]"), "")
                                         viewModel.saveCustomMatch(normKey, manualTitleQuery)
                                         itemToRematch = null
+                                        selectedItem = null
                                         viewModel.loadMediaCenter()
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))

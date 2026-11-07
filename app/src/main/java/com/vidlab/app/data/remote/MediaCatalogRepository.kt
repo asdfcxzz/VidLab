@@ -15,7 +15,7 @@ class MediaCatalogRepository(
     private val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
-    private val cacheFile = File(context.filesDir, "catalog_cache_v5.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v6.json")
     private val customMatchesFile = File(context.filesDir, "custom_matches.json")
 
     private fun getCustomMatches(): MutableMap<String, String> {
@@ -54,10 +54,8 @@ class MediaCatalogRepository(
             queue.add("/")
 
             val videoExtensions = setOf("mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "flv")
-            var iterations = 0
 
-            while (queue.isNotEmpty() && iterations < 1500) {
-                iterations++
+            while (queue.isNotEmpty()) {
                 val currentPath = queue.removeFirst()
                 val entries = webDavClient.listDirectory(currentPath).getOrDefault(emptyList())
                 for (entry in entries) {
@@ -110,22 +108,30 @@ class MediaCatalogRepository(
         val seriesBuckets = mutableMapOf<String, MutableList<MediaFile>>()
         val standaloneVideos = mutableListOf<MediaFile>()
 
-        val seasonFolderRegex = Regex("""(?i)^(?:season|s)\s*(\d{1,2})$""")
-        val epPattern = Regex("""(?i)(?:s(\d{1,2})[ ._-]*e(\d{1,3})|(\d{1,2})x(\d{1,3})|\bep?\s*(\d{1,3})\b)""")
+        val seasonRegex = Regex("""(?i)(?:season|s)\s*0*(\d{1,2})""")
+        val epRegex = Regex("""(?i)(?:s(\d{1,2})[ ._-]*e(\d{1,3})|(\d{1,2})x(\d{1,3})|\bep?\s*(\d{1,3})\b)""")
 
         for (file in files) {
             val parts = file.path.trim('/').split('/')
             val filename = file.name
-            val hasEp = epPattern.containsMatchIn(filename)
+            val hasEp = epRegex.containsMatchIn(filename)
 
             var detectedShowTitle: String? = null
 
-            if (parts.size >= 3 && seasonFolderRegex.matches(parts[parts.size - 2])) {
-                detectedShowTitle = parts[parts.size - 3]
-            } else if (hasEp) {
-                val sanitized = FilenameSanitizer.parse(filename)
-                detectedShowTitle = if (sanitized.cleanTitle.length > 2 && sanitized.cleanTitle != "Episode") {
-                    sanitized.cleanTitle
+            // Inspect entire directory hierarchy
+            for (i in parts.indices.reversed()) {
+                val segment = parts[i]
+                if (seasonRegex.containsMatchIn(segment) && i > 0) {
+                    // Show title is the folder containing the Season folder
+                    detectedShowTitle = parts[i - 1]
+                    break
+                }
+            }
+
+            if (detectedShowTitle == null && hasEp) {
+                val parsed = FilenameSanitizer.parse(filename)
+                detectedShowTitle = if (parsed.cleanTitle.length > 2 && parsed.cleanTitle != "Episode") {
+                    parsed.cleanTitle
                 } else if (parts.size >= 2) {
                     parts[parts.size - 2]
                 } else {
@@ -146,10 +152,13 @@ class MediaCatalogRepository(
             async {
                 val sampleFile = fileList.first()
                 val parts = sampleFile.path.trim('/').split('/')
-                val rawTitle = if (parts.size >= 3 && seasonFolderRegex.matches(parts[parts.size - 2])) {
-                    parts[parts.size - 3]
-                } else {
-                    FilenameSanitizer.parse(sampleFile.name).cleanTitle
+                var rawTitle = FilenameSanitizer.parse(sampleFile.name).cleanTitle
+
+                for (i in parts.indices.reversed()) {
+                    if (seasonRegex.containsMatchIn(parts[i]) && i > 0) {
+                        rawTitle = parts[i - 1]
+                        break
+                    }
                 }
 
                 val finalQuery = customMatches[key] ?: rawTitle
@@ -172,11 +181,17 @@ class MediaCatalogRepository(
                     val epParts = epFile.path.trim('/').split('/')
                     var sNum = 1
 
-                    if (epParts.size >= 3 && seasonFolderRegex.matches(epParts[epParts.size - 2])) {
-                        sNum = seasonFolderRegex.find(epParts[epParts.size - 2])?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                    } else {
-                        val parsed = FilenameSanitizer.parse(epFile.name)
-                        sNum = if (parsed.season > 0) parsed.season else 1
+                    for (p in epParts) {
+                        val m = seasonRegex.find(p)
+                        if (m != null) {
+                            sNum = m.groupValues[1].toIntOrNull() ?: 1
+                            break
+                        }
+                    }
+
+                    if (sNum == 1) {
+                        val p = FilenameSanitizer.parse(epFile.name)
+                        if (p.season > 0) sNum = p.season
                     }
 
                     val epParsed = FilenameSanitizer.parse(epFile.name)
