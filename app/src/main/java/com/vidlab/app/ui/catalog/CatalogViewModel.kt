@@ -3,17 +3,14 @@ package com.vidlab.app.ui.catalog
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.vidlab.app.data.model.MediaFeedSection
-import com.vidlab.app.data.model.MediaFile
+import com.vidlab.app.data.model.*
 import com.vidlab.app.data.remote.MediaCatalogRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class CatalogViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = MediaCatalogRepository(application)
+    val repository = MediaCatalogRepository(application)
 
     private val _feedSections = MutableStateFlow<List<MediaFeedSection>>(emptyList())
     val feedSections: StateFlow<List<MediaFeedSection>> = _feedSections.asStateFlow()
@@ -27,7 +24,10 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
     private val _explorerFiles = MutableStateFlow<List<MediaFile>>(emptyList())
     val explorerFiles: StateFlow<List<MediaFile>> = _explorerFiles.asStateFlow()
 
-    private var currentExplorerPath: String = "/"
+    private val _searchResults = MutableStateFlow<List<TmdbSearchResult>>(emptyList())
+    val searchResults: StateFlow<List<TmdbSearchResult>> = _searchResults.asStateFlow()
+
+    val ambiguousPrompts: SharedFlow<AmbiguousPrompt> = repository.ambiguousMatchesFlow
 
     init {
         val cached = repository.getCachedFeed()
@@ -53,12 +53,22 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun saveCustomMatch(originalKey: String, manualTitle: String) {
-        repository.saveCustomMatch(originalKey, manualTitle)
+    fun searchTmdb(query: String) {
+        viewModelScope.launch {
+            _searchResults.value = repository.scraper.searchTmdb(query)
+        }
+    }
+
+    fun clearSearchResults() {
+        _searchResults.value = emptyList()
+    }
+
+    fun applyManualRematch(mediaKey: String, tmdbId: Int, mediaType: String) {
+        repository.saveManualBinding(mediaKey, tmdbId, mediaType)
+        loadMediaCenter()
     }
 
     fun openExplorerPath(path: String) {
-        currentExplorerPath = path
         viewModelScope.launch {
             repository.getRawDirectory(path).onSuccess {
                 _explorerFiles.value = it

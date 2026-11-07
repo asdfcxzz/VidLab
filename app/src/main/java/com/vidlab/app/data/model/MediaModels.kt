@@ -7,27 +7,17 @@ data class MediaFile(
     val name: String,
     val path: String,
     val isDirectory: Boolean,
-    val size: Long = 0L
-) {
-    val isVideo: Boolean
-        get() = !isDirectory && (
-            name.endsWith(".mkv", true) ||
-            name.endsWith(".mp4", true) ||
-            name.endsWith(".webm", true) ||
-            name.endsWith(".avi", true)
-        )
-}
+    val size: Long = 0,
+    val isVideo: Boolean = false
+)
 
 @Serializable
 data class MediaMetadata(
-    val id: String = "",
     val title: String,
     val posterUrl: String? = null,
     val backdropUrl: String? = null,
-    val description: String? = null,
     val releaseYear: String? = null,
-    val genres: List<String> = emptyList(),
-    val rating: String? = null
+    val genres: List<String> = emptyList()
 )
 
 @Serializable
@@ -55,14 +45,30 @@ data class ScrapedMediaItem(
     val isSeries: Boolean = false,
     val primaryFile: MediaFile,
     val seasons: List<SeasonGroup> = emptyList(),
-    val metadata: MediaMetadata? = null
+    val metadata: MediaMetadata? = null,
+    val needsManualReview: Boolean = false
 ) {
     val totalEpisodesCount: Int
-        get() = if (isSeries) seasons.sumOf { it.episodes.size } else 1
+        get() = seasons.sumOf { it.episodes.size }
 }
 
 @Serializable
 data class MediaFeedSection(
     val title: String,
     val items: List<ScrapedMediaItem>
+)
+
+@Serializable
+data class TmdbSearchResult(
+    val id: Int,
+    val title: String,
+    val mediaType: String,
+    val year: String?,
+    val posterUrl: String?
+)
+
+data class AmbiguousPrompt(
+    val mediaKey: String,
+    val rawName: String,
+    val candidates: List<TmdbSearchResult>
 )

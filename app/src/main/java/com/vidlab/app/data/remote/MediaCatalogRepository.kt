@@ -2,26 +2,32 @@ package com.vidlab.app.data.remote
 
 import android.content.Context
 import com.vidlab.app.data.model.*
-import com.vidlab.app.data.scraper.FilenameSanitizer
-import com.vidlab.app.data.scraper.MetadataScraper
+import com.vidlab.app.data.scraper.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.net.URLDecoder
 
 class MediaCatalogRepository(
     private val context: Context,
     private val webDavClient: WebDavClient = WebDavClient(),
-    private val scraper: MetadataScraper = MetadataScraper(),
+    val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
-    private val cacheFile = File(context.filesDir, "catalog_cache_v6.json")
-    private val customMatchesFile = File(context.filesDir, "custom_matches.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v11.json")
+    private val manualBindingsFile = File(context.filesDir, "manual_bindings.json")
 
-    private fun getCustomMatches(): MutableMap<String, String> {
+    private val _ambiguousMatchesFlow = MutableSharedFlow<AmbiguousPrompt>(replay = 5)
+    val ambiguousMatchesFlow: SharedFlow<AmbiguousPrompt> = _ambiguousMatchesFlow.asSharedFlow()
+
+    private fun getManualBindings(): MutableMap<String, String> {
         return try {
-            if (customMatchesFile.exists()) {
-                val map: Map<String, String> = json.decodeFromString(customMatchesFile.readText())
+            if (manualBindingsFile.exists()) {
+                val map: Map<String, String> = json.decodeFromString(manualBindingsFile.readText())
                 map.toMutableMap()
             } else mutableMapOf()
         } catch (_: Exception) {
@@ -29,10 +35,10 @@ class MediaCatalogRepository(
         }
     }
 
-    fun saveCustomMatch(originalKey: String, manualTitle: String) {
-        val matches = getCustomMatches()
-        matches[originalKey] = manualTitle
-        customMatchesFile.writeText(json.encodeToString(matches))
+    fun saveManualBinding(mediaKey: String, tmdbId: Int, mediaType: String) {
+        val bindings = getManualBindings()
+        bindings[mediaKey] = "$tmdbId:$mediaType"
+        manualBindingsFile.writeText(json.encodeToString(bindings))
         cacheFile.delete()
     }
 
@@ -54,13 +60,17 @@ class MediaCatalogRepository(
             queue.add("/")
 
             val videoExtensions = setOf("mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "flv")
+            val visited = mutableSetOf<String>()
 
             while (queue.isNotEmpty()) {
                 val currentPath = queue.removeFirst()
+                if (currentPath in visited) continue
+                visited.add(currentPath)
+
                 val entries = webDavClient.listDirectory(currentPath).getOrDefault(emptyList())
                 for (entry in entries) {
                     if (entry.isDirectory) {
-                        queue.add(entry.path)
+                        if (entry.path !in visited) queue.add(entry.path)
                     } else {
                         val ext = entry.name.substringAfterLast('.', "").lowercase()
                         if (ext in videoExtensions) {
@@ -104,44 +114,34 @@ class MediaCatalogRepository(
     }
 
     private suspend fun groupAndScrapeMedia(files: List<MediaFile>): List<ScrapedMediaItem> = coroutineScope {
-        val customMatches = getCustomMatches()
+        val manualBindings = getManualBindings()
         val seriesBuckets = mutableMapOf<String, MutableList<MediaFile>>()
         val standaloneVideos = mutableListOf<MediaFile>()
 
-        val seasonRegex = Regex("""(?i)(?:season|s)\s*0*(\d{1,2})""")
-        val epRegex = Regex("""(?i)(?:s(\d{1,2})[ ._-]*e(\d{1,3})|(\d{1,2})x(\d{1,3})|\bep?\s*(\d{1,3})\b)""")
-
         for (file in files) {
-            val parts = file.path.trim('/').split('/')
+            val decPath = URLDecoder.decode(file.path, "UTF-8")
+            val parts = decPath.trim('/').split('/')
             val filename = file.name
-            val hasEp = epRegex.containsMatchIn(filename)
 
-            var detectedShowTitle: String? = null
+            val fileParsed = FilenameSanitizer.parse(filename)
+            var detectedShow: String? = null
 
-            // Inspect entire directory hierarchy
-            for (i in parts.indices.reversed()) {
-                val segment = parts[i]
-                if (seasonRegex.containsMatchIn(segment) && i > 0) {
-                    // Show title is the folder containing the Season folder
-                    detectedShowTitle = parts[i - 1]
+            for (part in parts.reversed().drop(1)) {
+                val p = FilenameSanitizer.parse(part)
+                val lower = p.cleanTitle.lowercase()
+                if (p.cleanTitle.length > 2 && lower !in setOf("shows", "tv shows", "tv", "anime", "movies", "media", "disk")) {
+                    detectedShow = p.cleanTitle
                     break
                 }
             }
 
-            if (detectedShowTitle == null && hasEp) {
-                val parsed = FilenameSanitizer.parse(filename)
-                detectedShowTitle = if (parsed.cleanTitle.length > 2 && parsed.cleanTitle != "Episode") {
-                    parsed.cleanTitle
-                } else if (parts.size >= 2) {
-                    parts[parts.size - 2]
-                } else {
-                    filename.substringBeforeLast('.')
-                }
+            if (detectedShow == null && fileParsed.isSeries) {
+                detectedShow = fileParsed.cleanTitle
             }
 
-            if (detectedShowTitle != null) {
-                val normKey = detectedShowTitle.lowercase().replace(Regex("[^a-z0-9]"), "")
-                seriesBuckets.getOrPut(normKey) { mutableListOf() }.add(file)
+            if (detectedShow != null) {
+                val key = detectedShow.lowercase().replace(Regex("[^a-z0-9]"), "")
+                seriesBuckets.getOrPut(key) { mutableListOf() }.add(file)
             } else {
                 standaloneVideos.add(file)
             }
@@ -151,61 +151,82 @@ class MediaCatalogRepository(
         val seriesDeferred = seriesBuckets.entries.map { (key, fileList) ->
             async {
                 val sampleFile = fileList.first()
-                val parts = sampleFile.path.trim('/').split('/')
-                var rawTitle = FilenameSanitizer.parse(sampleFile.name).cleanTitle
+                val decPath = URLDecoder.decode(sampleFile.path, "UTF-8")
+                val parts = decPath.trim('/').split('/')
 
-                for (i in parts.indices.reversed()) {
-                    if (seasonRegex.containsMatchIn(parts[i]) && i > 0) {
-                        rawTitle = parts[i - 1]
+                var cleanShowName = FilenameSanitizer.parse(sampleFile.name).cleanTitle
+                for (part in parts.reversed().drop(1)) {
+                    val p = FilenameSanitizer.parse(part)
+                    val lower = p.cleanTitle.lowercase()
+                    if (p.cleanTitle.length > 2 && lower !in setOf("shows", "tv shows", "tv", "anime", "movies", "media", "disk")) {
+                        cleanShowName = p.cleanTitle
                         break
                     }
                 }
 
-                val finalQuery = customMatches[key] ?: rawTitle
-                val (scrapedMeta, scrapedEpisodesMap) = scraper.fetchDetailedMetadata(finalQuery)
-                val cleanTitle = scrapedMeta?.title ?: finalQuery
+                val binding = manualBindings[key]
+                val (forcedId, forcedType) = if (binding != null && binding.contains(":")) {
+                    val sp = binding.split(":")
+                    Pair(sp[0].toIntOrNull(), sp[1])
+                } else Pair(null, null)
 
-                val appMetadata = scrapedMeta?.let {
-                    MediaMetadata(
-                        title = it.title,
-                        posterUrl = it.posterUrl,
-                        backdropUrl = it.backdropUrl,
-                        releaseYear = it.releaseYear,
-                        genres = it.genres
-                    )
+                val matchResult = scraper.scrapeWithVerification(cleanShowName, forcedId, forcedType)
+
+                var finalMeta: MediaMetadata? = null
+                var finalEpisodesMap = emptyMap<String, ScrapedEpisode>()
+                var needsReview = false
+
+                when (matchResult) {
+                    is MatchResult.ConfidentMatch -> {
+                        finalMeta = matchResult.metadata
+                        finalEpisodesMap = matchResult.episodes
+                    }
+                    is MatchResult.Ambiguous -> {
+                        needsReview = true
+                        _ambiguousMatchesFlow.emit(AmbiguousPrompt(key, cleanShowName, matchResult.candidates))
+                    }
+                    is MatchResult.NoMatch -> {
+                        needsReview = true
+                    }
                 }
 
+                val officialShowTitle = finalMeta?.title ?: cleanShowName
                 val seasonMap = mutableMapOf<Int, MutableList<ProcessedEpisode>>()
 
                 for (epFile in fileList) {
-                    val epParts = epFile.path.trim('/').split('/')
-                    var sNum = 1
+                    val dec = URLDecoder.decode(epFile.path, "UTF-8")
+                    val epParts = dec.trim('/').split('/')
+                    val epParsed = FilenameSanitizer.parse(epFile.name)
 
-                    for (p in epParts) {
-                        val m = seasonRegex.find(p)
-                        if (m != null) {
-                            sNum = m.groupValues[1].toIntOrNull() ?: 1
-                            break
+                    var sNum = epParsed.season
+                    if (sNum == 1) {
+                        for (part in epParts) {
+                            val p = FilenameSanitizer.parse(part)
+                            if (p.season > 1) {
+                                sNum = p.season
+                                break
+                            }
                         }
                     }
 
-                    if (sNum == 1) {
-                        val p = FilenameSanitizer.parse(epFile.name)
-                        if (p.season > 0) sNum = p.season
-                    }
-
-                    val epParsed = FilenameSanitizer.parse(epFile.name)
                     val epNum = epParsed.episode ?: 1
                     val epKey = "S${sNum}E${epNum}"
-                    val scrapedEp = scrapedEpisodesMap[epKey]
+                    val scrapedEp = finalEpisodesMap[epKey]
+
+                    val formattedEp = String.format("S%02dE%02d", sNum, epNum)
+                    val finalEpTitle = if (!scrapedEp?.title.isNullOrBlank()) {
+                        "$formattedEp • ${scrapedEp!!.title}"
+                    } else {
+                        "$formattedEp • Episode $epNum"
+                    }
 
                     seasonMap.getOrPut(sNum) { mutableListOf() }.add(
                         ProcessedEpisode(
                             file = epFile,
                             seasonNumber = sNum,
                             episodeNumber = epNum,
-                            title = scrapedEp?.title ?: epFile.name.substringBeforeLast('.'),
-                            thumbnail = scrapedEp?.thumbnail ?: scrapedMeta?.backdropUrl ?: scrapedMeta?.posterUrl
+                            title = finalEpTitle,
+                            thumbnail = scrapedEp?.thumbnail ?: finalMeta?.backdropUrl ?: finalMeta?.posterUrl
                         )
                     )
                 }
@@ -218,47 +239,57 @@ class MediaCatalogRepository(
 
                 ScrapedMediaItem(
                     id = key,
-                    title = cleanTitle,
-                    posterUrl = scrapedMeta?.posterUrl,
-                    backdropUrl = scrapedMeta?.backdropUrl ?: scrapedMeta?.posterUrl,
-                    releaseYear = scrapedMeta?.releaseYear,
+                    title = officialShowTitle,
+                    posterUrl = finalMeta?.posterUrl,
+                    backdropUrl = finalMeta?.backdropUrl ?: finalMeta?.posterUrl,
+                    releaseYear = finalMeta?.releaseYear,
                     isSeries = true,
                     primaryFile = firstPlayable,
                     seasons = seasonGroups,
-                    metadata = appMetadata
+                    metadata = finalMeta,
+                    needsManualReview = needsReview
                 )
             }
         }
 
-        // Process Standalone Videos & Movies
+        // Process Movies
         val movieDeferred = standaloneVideos.map { file ->
             async {
-                val defaultTitle = FilenameSanitizer.parse(file.name).cleanTitle
-                val normKey = defaultTitle.lowercase().replace(Regex("[^a-z0-9]"), "")
-                val searchTitle = customMatches[normKey] ?: defaultTitle
+                val clean = FilenameSanitizer.parse(file.name).cleanTitle
+                val key = clean.lowercase().replace(Regex("[^a-z0-9]"), "")
 
-                val (scrapedMeta, _) = scraper.fetchDetailedMetadata(searchTitle)
-                val cleanTitle = scrapedMeta?.title ?: defaultTitle
+                val binding = manualBindings[key]
+                val (forcedId, forcedType) = if (binding != null && binding.contains(":")) {
+                    val sp = binding.split(":")
+                    Pair(sp[0].toIntOrNull(), sp[1])
+                } else Pair(null, null)
 
-                val appMetadata = scrapedMeta?.let {
-                    MediaMetadata(
-                        title = it.title,
-                        posterUrl = it.posterUrl,
-                        backdropUrl = it.backdropUrl,
-                        releaseYear = it.releaseYear,
-                        genres = it.genres
-                    )
+                val matchResult = scraper.scrapeWithVerification(clean, forcedId, forcedType)
+
+                var finalMeta: MediaMetadata? = null
+                var needsReview = false
+
+                when (matchResult) {
+                    is MatchResult.ConfidentMatch -> finalMeta = matchResult.metadata
+                    is MatchResult.Ambiguous -> {
+                        needsReview = true
+                        _ambiguousMatchesFlow.emit(AmbiguousPrompt(key, clean, matchResult.candidates))
+                    }
+                    is MatchResult.NoMatch -> needsReview = true
                 }
 
+                val officialMovieTitle = finalMeta?.title ?: clean
+
                 ScrapedMediaItem(
-                    id = file.path,
-                    title = cleanTitle,
-                    posterUrl = scrapedMeta?.posterUrl,
-                    backdropUrl = scrapedMeta?.backdropUrl ?: scrapedMeta?.posterUrl,
-                    releaseYear = scrapedMeta?.releaseYear,
+                    id = key,
+                    title = officialMovieTitle,
+                    posterUrl = finalMeta?.posterUrl,
+                    backdropUrl = finalMeta?.backdropUrl ?: finalMeta?.posterUrl,
+                    releaseYear = finalMeta?.releaseYear,
                     isSeries = false,
                     primaryFile = file,
-                    metadata = appMetadata
+                    metadata = finalMeta,
+                    needsManualReview = needsReview
                 )
             }
         }

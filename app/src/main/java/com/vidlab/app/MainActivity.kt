@@ -7,14 +7,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,10 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vidlab.app.data.model.AmbiguousPrompt
 import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
 import com.vidlab.app.ui.catalog.*
 import com.vidlab.app.ui.player.PlayerActivity
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -41,15 +42,22 @@ class MainActivity : ComponentActivity() {
             val isLoading by viewModel.isFeedLoading.collectAsState()
             val errorMessage by viewModel.feedError.collectAsState()
             val explorerFiles by viewModel.explorerFiles.collectAsState()
+            val searchResults by viewModel.searchResults.collectAsState()
 
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var showSourceSheet by remember { mutableStateOf(false) }
             var itemToRematch by remember { mutableStateOf<ScrapedMediaItem?>(null) }
-            var manualTitleQuery by remember { mutableStateOf("") }
+            var activeAmbiguousPrompt by remember { mutableStateOf<AmbiguousPrompt?>(null) }
 
             val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
             val coroutineScope = rememberCoroutineScope()
             var simklConnected by remember { mutableStateOf(false) }
+
+            LaunchedEffect(Unit) {
+                viewModel.ambiguousPrompts.collectLatest { prompt ->
+                    activeAmbiguousPrompt = prompt
+                }
+            }
 
             BackHandler(enabled = drawerState.isOpen || selectedItem != null) {
                 if (drawerState.isOpen) {
@@ -62,72 +70,19 @@ class MainActivity : ComponentActivity() {
             ModalNavigationDrawer(
                 drawerState = drawerState,
                 drawerContent = {
-                    ModalDrawerSheet(
-                        drawerContainerColor = Color(0xFF100D1C),
-                        modifier = Modifier.width(300.dp)
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-                            Text("VidLab", color = Color.White, fontSize = 22.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                            Text("Media Center & Scrobbler", color = Color(0xFF9E95B8), fontSize = 12.sp)
-
-                            Spacer(modifier = Modifier.height(24.dp))
-                            HorizontalDivider(color = Color(0xFF26203B))
-                            Spacer(modifier = Modifier.height(20.dp))
-
-                            Text("INTEGRATIONS", color = Color(0xFF8B5CF6), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Surface(
-                                color = Color(0xFF171324),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth().border(0.5.dp, Color(0xFF26203B), RoundedCornerShape(10.dp))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column {
-                                        Text("Simkl Scrobbler", color = Color.White, fontSize = 14.sp)
-                                        Text(if (simklConnected) "Logged in • Auto-tracking" else "Not linked", color = if (simklConnected) Color(0xFF4CAF50) else Color(0xFF9E95B8), fontSize = 11.sp)
-                                    }
-                                    Switch(
-                                        checked = simklConnected,
-                                        onCheckedChange = { simklConnected = it },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = Color(0xFF8B5CF6)
-                                        )
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(20.dp))
-
-                            NavigationDrawerItem(
-                                label = { Text("Rescan WebDAV Library", color = Color.White) },
-                                icon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White) },
-                                selected = false,
-                                onClick = {
-                                    coroutineScope.launch { drawerState.close() }
-                                    viewModel.loadMediaCenter()
-                                },
-                                colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
-                            )
-
-                            NavigationDrawerItem(
-                                label = { Text("Browse File Storage", color = Color.White) },
-                                icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White) },
-                                selected = false,
-                                onClick = {
-                                    coroutineScope.launch { drawerState.close() }
-                                    viewModel.openExplorerPath("/")
-                                    showSourceSheet = true
-                                },
-                                colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
-                            )
+                    VidLabDrawerContent(
+                        simklConnected = simklConnected,
+                        onSimklToggle = { simklConnected = it },
+                        onRescanClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.loadMediaCenter()
+                        },
+                        onBrowseStorageClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.openExplorerPath("/")
+                            showSourceSheet = true
                         }
-                    }
+                    )
                 }
             ) {
                 Box(modifier = Modifier.fillMaxSize().background(Color(0xFF09070F))) {
@@ -138,7 +93,7 @@ class MainActivity : ComponentActivity() {
                             onPlayFile = { file -> launchPlayer(file) },
                             onRematch = { item ->
                                 itemToRematch = item
-                                manualTitleQuery = item.title
+                                viewModel.searchTmdb(item.title)
                             }
                         )
                     } else {
@@ -151,54 +106,38 @@ class MainActivity : ComponentActivity() {
                             onSelectItem = { item -> selectedItem = item },
                             onRematchItem = { item ->
                                 itemToRematch = item
-                                manualTitleQuery = item.title
+                                viewModel.searchTmdb(item.title)
                             }
                         )
                     }
 
-                    // VidHub-style manual Rematch dialog
+                    if (activeAmbiguousPrompt != null) {
+                        AmbiguousMatchDialog(
+                            prompt = activeAmbiguousPrompt!!,
+                            onSelectMatch = { cand ->
+                                viewModel.applyManualRematch(activeAmbiguousPrompt!!.mediaKey, cand.id, cand.mediaType)
+                                activeAmbiguousPrompt = null
+                            },
+                            onDismiss = { activeAmbiguousPrompt = null }
+                        )
+                    }
+
                     if (itemToRematch != null) {
-                        AlertDialog(
-                            onDismissRequest = { itemToRematch = null },
-                            title = { Text("Fix Match / Rename", color = Color.White, fontSize = 18.sp) },
-                            text = {
-                                Column {
-                                    Text("Enter exact title or IMDb ID (e.g. tt0944947):", color = Color(0xFF9E95B8), fontSize = 12.sp)
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    TextField(
-                                        value = manualTitleQuery,
-                                        onValueChange = { manualTitleQuery = it },
-                                        singleLine = true,
-                                        colors = TextFieldDefaults.colors(
-                                            focusedContainerColor = Color(0xFF1B162B),
-                                            unfocusedContainerColor = Color(0xFF1B162B),
-                                            focusedTextColor = Color.White,
-                                            unfocusedTextColor = Color.White
-                                        )
-                                    )
-                                }
+                        FixMatchBottomSheet(
+                            item = itemToRematch!!,
+                            searchResults = searchResults,
+                            initialQuery = itemToRematch!!.title,
+                            onSearch = { query -> viewModel.searchTmdb(query) },
+                            onSelectMatch = { result ->
+                                viewModel.applyManualRematch(itemToRematch!!.id, result.id, result.mediaType)
+                                itemToRematch = null
+                                selectedItem = null
+                                viewModel.clearSearchResults()
                             },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        val target = itemToRematch!!
-                                        val normKey = target.title.lowercase().replace(Regex("[^a-z0-9]"), "")
-                                        viewModel.saveCustomMatch(normKey, manualTitleQuery)
-                                        itemToRematch = null
-                                        selectedItem = null
-                                        viewModel.loadMediaCenter()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
-                                ) {
-                                    Text("Apply & Scrape", color = Color.White)
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { itemToRematch = null }) {
-                                    Text("Cancel", color = Color.Gray)
-                                }
-                            },
-                            containerColor = Color(0xFF141120)
+                            onDismiss = {
+                                itemToRematch = null
+                                viewModel.clearSearchResults()
+                            }
                         )
                     }
 
@@ -207,11 +146,7 @@ class MainActivity : ComponentActivity() {
                             onDismissRequest = { showSourceSheet = false },
                             containerColor = Color(0xFF141120)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                                 Text("File Source Explorer", color = Color.White, fontSize = 18.sp)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 LazyColumn(modifier = Modifier.heightIn(max = 450.dp)) {
