@@ -29,14 +29,13 @@ class MediaCatalogRepository(
 
     suspend fun buildMediaCenterFeed(): Result<List<MediaFeedSection>> = withContext(Dispatchers.IO) {
         runCatching {
-            // Recursive scan of all video files
             val allVideoFiles = mutableListOf<MediaFile>()
             val queue = ArrayDeque<String>()
             queue.add("/")
 
-            var depth = 0
-            while (queue.isNotEmpty() && depth < 100) {
-                depth++
+            var iterations = 0
+            while (queue.isNotEmpty() && iterations < 300) {
+                iterations++
                 val currentPath = queue.removeFirst()
                 val entries = webDavClient.listDirectory(currentPath).getOrDefault(emptyList())
                 for (entry in entries) {
@@ -80,44 +79,26 @@ class MediaCatalogRepository(
     }
 
     private suspend fun groupAndScrapeMedia(files: List<MediaFile>): List<ScrapedMediaItem> = coroutineScope {
-        // Group files by show title / canonical key
         val seriesBuckets = mutableMapOf<String, MutableList<Pair<MediaFile, Int>>>()
         val standaloneVideos = mutableListOf<MediaFile>()
 
         for (file in files) {
-            // Check file name and parent folder names for series indicators
-            val pathParts = file.path.split("/").filter { it.isNotBlank() }
             val fileParsed = FilenameSanitizer.parse(file.name)
+            val pathSegments = file.path.trim('/').split('/')
 
-            var detectedSeason = fileParsed.season
-            var showName = fileParsed.cleanTitle
-            var isSeries = fileParsed.isSeries
-
-            // Check if enclosed in a Season X or Show Name folder
-            if (pathParts.size >= 2) {
-                val parentFolder = pathParts[pathParts.size - 2]
-                val parentParsed = FilenameSanitizer.parse(parentFolder)
-                if (parentParsed.isSeries || parentFolder.contains("season", true) || parentFolder.matches(Regex("(?i)s\\d+"))) {
-                    isSeries = true
-                    if (parentParsed.season > 1 || detectedSeason == 1) {
-                        detectedSeason = parentParsed.season
-                    }
-                    if (pathParts.size >= 3) {
-                        showName = FilenameSanitizer.parse(pathParts[pathParts.size - 3]).cleanTitle
-                    }
-                } else if (pathParts.size >= 2 && !fileParsed.isSeries) {
-                    // Parent folder might be the show name
-                    if (files.count { it.path.startsWith(file.path.substringBeforeLast('/')) } > 1) {
-                        showName = parentParsed.cleanTitle
-                        isSeries = true
+            if (fileParsed.isSeries) {
+                var showTitle = fileParsed.cleanTitle
+                if (pathSegments.size >= 2) {
+                    val candidate = FilenameSanitizer.parse(pathSegments[pathSegments.size - 2])
+                    if (!candidate.isSeries && candidate.cleanTitle.length > 2) {
+                        showTitle = candidate.cleanTitle
+                    } else if (pathSegments.size >= 3) {
+                        val grandParent = FilenameSanitizer.parse(pathSegments[pathSegments.size - 3])
+                        if (grandParent.cleanTitle.length > 2) showTitle = grandParent.cleanTitle
                     }
                 }
-            }
-
-            val canonicalKey = showName.lowercase().replace(Regex("[^a-z0-9]"), "")
-
-            if (isSeries) {
-                seriesBuckets.getOrPut(canonicalKey) { mutableListOf() }.add(Pair(file, detectedSeason))
+                val key = showTitle.lowercase().replace(Regex("[^a-z0-9]"), "")
+                seriesBuckets.getOrPut(key) { mutableListOf() }.add(Pair(file, fileParsed.season))
             } else {
                 standaloneVideos.add(file)
             }
@@ -129,7 +110,6 @@ class MediaCatalogRepository(
                 val (meta, scrapedEpisodesMap) = scraper.fetchDetailedMetadata(sampleFile.name)
                 val cleanTitle = meta?.title ?: FilenameSanitizer.parse(sampleFile.name).cleanTitle
 
-                // Group into seasons
                 val seasonGroups = filePairs.groupBy { it.second }.map { (sNum, pairs) ->
                     val sortedEps = pairs.map { it.first }.sortedBy { it.name }.mapIndexed { idx, epFile ->
                         val epParsed = FilenameSanitizer.parse(epFile.name)

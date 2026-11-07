@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -138,18 +139,12 @@ fun HeroCarousel(
                         shape = CircleShape,
                         modifier = Modifier.width(150.dp).height(42.dp)
                     ) {
-                        Text(
-                            text = "Watch now",
-                            color = Color.Black,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(text = "Watch now", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
 
-        // Carousel Dot Indicators
         if (featuredItems.size > 1) {
             Row(
                 modifier = Modifier
@@ -255,6 +250,7 @@ fun MediaCenterScreen(
     sections: List<MediaFeedSection>,
     isLoading: Boolean,
     errorMessage: String?,
+    onOpenDrawer: () -> Unit,
     onOpenFileSource: () -> Unit,
     onRescan: () -> Unit,
     onSelectItem: (ScrapedMediaItem) -> Unit,
@@ -263,6 +259,14 @@ fun MediaCenterScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
+    val listState = rememberLazyListState()
+
+    // Floating action button hides when scrolling down
+    val isScrollingUp by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 40
+        }
+    }
 
     val carouselItems = remember(sections) {
         sections.flatMap { it.items }
@@ -286,7 +290,7 @@ fun MediaCenterScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DeepPurpleBg.copy(alpha = 0.9f))
+                    .background(Color.Transparent)
                     .statusBarsPadding()
             ) {
                 Row(
@@ -296,45 +300,44 @@ fun MediaCenterScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onOpenFileSource,
-                        modifier = Modifier.size(40.dp).background(Color(0x33FFFFFF), CircleShape)
+                    // Left Hamburger Button
+                    Surface(
+                        color = Color(0x5509070F),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.border(0.5.dp, BorderPurple, RoundedCornerShape(12.dp))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = "File Manager",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        IconButton(onClick = onOpenDrawer, modifier = Modifier.size(42.dp)) {
+                            Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Right Actions Container
+                    Surface(
+                        color = Color(0x5509070F),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.border(0.5.dp, BorderPurple, RoundedCornerShape(12.dp))
                     ) {
-                        IconButton(
-                            onClick = {
-                                isSearchActive = !isSearchActive
-                                if (!isSearchActive) searchQuery = ""
-                            },
-                            modifier = Modifier.size(40.dp).background(Color(0x33FFFFFF), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onRescan,
-                            modifier = Modifier.size(40.dp).background(Color(0x33FFFFFF), CircleShape)
-                        ) {
-                            if (isLoading) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = AccentViolet)
-                            } else {
-                                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Rescan", tint = Color.White, modifier = Modifier.size(18.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    isSearchActive = !isSearchActive
+                                    if (!isSearchActive) searchQuery = ""
+                                },
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                            IconButton(onClick = onRescan, modifier = Modifier.size(42.dp)) {
+                                if (isLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = AccentViolet)
+                                } else {
+                                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Rescan", tint = Color.White, modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }
@@ -370,6 +373,25 @@ fun MediaCenterScreen(
                 }
             }
         },
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = isScrollingUp,
+                enter = scaleIn() + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
+                FloatingActionButton(
+                    onClick = onOpenFileSource,
+                    containerColor = Color(0xF0181326),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .padding(bottom = 16.dp, end = 8.dp)
+                        .border(1.dp, BorderPurple, RoundedCornerShape(14.dp))
+                ) {
+                    Icon(imageVector = Icons.Default.Folder, contentDescription = "File Manager", modifier = Modifier.size(24.dp))
+                }
+            }
+        },
         containerColor = DeepPurpleBg,
         modifier = modifier
     ) { padding ->
@@ -379,7 +401,8 @@ fun MediaCenterScreen(
                 .padding(padding)
         ) {
             LazyColumn(
-                contentPadding = PaddingValues(bottom = 24.dp),
+                state = listState,
+                contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
