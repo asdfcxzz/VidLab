@@ -12,7 +12,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,7 +19,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,9 +44,11 @@ class MainActivity : ComponentActivity() {
 
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var showSourceSheet by remember { mutableStateOf(false) }
+            var itemToRematch by remember { mutableStateOf<ScrapedMediaItem?>(null) }
+            var manualTitleQuery by remember { mutableStateOf("") }
+
             val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
             val coroutineScope = rememberCoroutineScope()
-
             var simklConnected by remember { mutableStateOf(false) }
 
             BackHandler(enabled = drawerState.isOpen || selectedItem != null) {
@@ -74,7 +74,6 @@ class MainActivity : ComponentActivity() {
                             HorizontalDivider(color = Color(0xFF26203B))
                             Spacer(modifier = Modifier.height(20.dp))
 
-                            // Simkl Integration Section
                             Text("INTEGRATIONS", color = Color(0xFF8B5CF6), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -105,7 +104,6 @@ class MainActivity : ComponentActivity() {
 
                             Spacer(modifier = Modifier.height(20.dp))
 
-                            // Settings options
                             NavigationDrawerItem(
                                 label = { Text("Rescan WebDAV Library", color = Color.White) },
                                 icon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White) },
@@ -145,12 +143,57 @@ class MainActivity : ComponentActivity() {
                             isLoading = isLoading,
                             errorMessage = errorMessage,
                             onOpenDrawer = { coroutineScope.launch { drawerState.open() } },
-                            onOpenFileSource = {
-                                viewModel.openExplorerPath("/")
-                                showSourceSheet = true
-                            },
                             onRescan = { viewModel.loadMediaCenter() },
-                            onSelectItem = { item -> selectedItem = item }
+                            onSelectItem = { item -> selectedItem = item },
+                            onRematchItem = { item ->
+                                itemToRematch = item
+                                manualTitleQuery = item.title
+                            }
+                        )
+                    }
+
+                    // VidHub-style manual Rematch dialog
+                    if (itemToRematch != null) {
+                        AlertDialog(
+                            onDismissRequest = { itemToRematch = null },
+                            title = { Text("Fix Match / Rename", color = Color.White, fontSize = 18.sp) },
+                            text = {
+                                Column {
+                                    Text("Enter exact title for metadata scraping:", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextField(
+                                        value = manualTitleQuery,
+                                        onValueChange = { manualTitleQuery = it },
+                                        singleLine = true,
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = Color(0xFF1B162B),
+                                            unfocusedContainerColor = Color(0xFF1B162B),
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White
+                                        )
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        val target = itemToRematch!!
+                                        val normKey = target.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+                                        viewModel.saveCustomMatch(normKey, manualTitleQuery)
+                                        itemToRematch = null
+                                        viewModel.loadMediaCenter()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
+                                ) {
+                                    Text("Apply & Scrape", color = Color.White)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { itemToRematch = null }) {
+                                    Text("Cancel", color = Color.Gray)
+                                }
+                            },
+                            containerColor = Color(0xFF141120)
                         )
                     }
 

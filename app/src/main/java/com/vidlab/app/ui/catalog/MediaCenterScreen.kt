@@ -4,12 +4,11 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.vidlab.app.data.model.MediaFeedSection
-import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
 import kotlinx.coroutines.delay
 
@@ -166,16 +164,21 @@ fun HeroCarousel(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaCenterCard(
     item: ScrapedMediaItem,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .width(124.dp)
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
         Card(
             modifier = Modifier
@@ -199,14 +202,17 @@ fun MediaCenterCard(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Brush.verticalGradient(listOf(Color(0xFF221A36), Color(0xFF100D1C)))),
+                            .background(Brush.verticalGradient(listOf(Color(0xFF221A36), Color(0xFF100D1C))))
+                            .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = item.title.take(2).uppercase(),
-                            color = AccentViolet.copy(alpha = 0.6f),
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold
+                            text = item.title,
+                            color = AccentViolet.copy(alpha = 0.8f),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -251,27 +257,20 @@ fun MediaCenterScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onOpenDrawer: () -> Unit,
-    onOpenFileSource: () -> Unit,
     onRescan: () -> Unit,
     onSelectItem: (ScrapedMediaItem) -> Unit,
+    onRematchItem: (ScrapedMediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
-    val listState = rememberLazyListState()
-
-    // Floating action button hides when scrolling down
-    val isScrollingUp by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 40
-        }
-    }
 
     val carouselItems = remember(sections) {
         sections.flatMap { it.items }
             .filter { !it.backdropUrl.isNullOrBlank() }
             .distinctBy { it.title }
+            .shuffled()
             .take(6)
     }
 
@@ -300,7 +299,6 @@ fun MediaCenterScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left Hamburger Button
                     Surface(
                         color = Color(0x5509070F),
                         shape = RoundedCornerShape(12.dp),
@@ -311,7 +309,6 @@ fun MediaCenterScreen(
                         }
                     }
 
-                    // Right Actions Container
                     Surface(
                         color = Color(0x5509070F),
                         shape = RoundedCornerShape(12.dp),
@@ -373,25 +370,6 @@ fun MediaCenterScreen(
                 }
             }
         },
-        floatingActionButton = {
-            AnimatedVisibility(
-                visible = isScrollingUp,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                FloatingActionButton(
-                    onClick = onOpenFileSource,
-                    containerColor = Color(0xF0181326),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .padding(bottom = 16.dp, end = 8.dp)
-                        .border(1.dp, BorderPurple, RoundedCornerShape(14.dp))
-                ) {
-                    Icon(imageVector = Icons.Default.Folder, contentDescription = "File Manager", modifier = Modifier.size(24.dp))
-                }
-            }
-        },
         containerColor = DeepPurpleBg,
         modifier = modifier
     ) { padding ->
@@ -401,8 +379,7 @@ fun MediaCenterScreen(
                 .padding(padding)
         ) {
             LazyColumn(
-                state = listState,
-                contentPadding = PaddingValues(bottom = 80.dp),
+                contentPadding = PaddingValues(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -430,7 +407,11 @@ fun MediaCenterScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(section.items) { item ->
-                                MediaCenterCard(item = item, onClick = { onSelectItem(item) })
+                                MediaCenterCard(
+                                    item = item,
+                                    onClick = { onSelectItem(item) },
+                                    onLongClick = { onRematchItem(item) }
+                                )
                             }
                         }
                     }

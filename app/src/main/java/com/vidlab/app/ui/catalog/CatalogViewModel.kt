@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 class CatalogViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = MediaCatalogRepository(application.applicationContext)
+    private val repository = MediaCatalogRepository(application)
 
     private val _feedSections = MutableStateFlow<List<MediaFeedSection>>(emptyList())
     val feedSections: StateFlow<List<MediaFeedSection>> = _feedSections.asStateFlow()
@@ -27,11 +27,11 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
     private val _explorerFiles = MutableStateFlow<List<MediaFile>>(emptyList())
     val explorerFiles: StateFlow<List<MediaFile>> = _explorerFiles.asStateFlow()
 
-    private val pathBackStack = mutableListOf<String>()
+    private var currentExplorerPath: String = "/"
 
     init {
         val cached = repository.getCachedFeed()
-        if (!cached.isNullOrEmpty()) {
+        if (cached != null) {
             _feedSections.value = cached
         } else {
             loadMediaCenter()
@@ -42,36 +42,33 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _isFeedLoading.value = true
             _feedError.value = null
-            repository.buildMediaCenterFeed()
-                .onSuccess { sections ->
-                    _feedSections.value = sections
-                    _isFeedLoading.value = false
-                }
-                .onFailure { err ->
-                    _feedError.value = err.localizedMessage ?: "Failed to connect to WebDAV backend"
-                    _isFeedLoading.value = false
-                }
+            val result = repository.buildMediaCenterFeed()
+            result.onSuccess { sections ->
+                _feedSections.value = sections
+                _isFeedLoading.value = false
+            }.onFailure { err ->
+                _feedError.value = err.localizedMessage
+                _isFeedLoading.value = false
+            }
         }
     }
 
-    fun openExplorerPath(path: String = "/") {
+    fun saveCustomMatch(originalKey: String, manualTitle: String) {
+        repository.saveCustomMatch(originalKey, manualTitle)
+    }
+
+    fun openExplorerPath(path: String) {
+        currentExplorerPath = path
         viewModelScope.launch {
-            repository.getRawDirectory(path)
-                .onSuccess { files -> _explorerFiles.value = files }
+            repository.getRawDirectory(path).onSuccess {
+                _explorerFiles.value = it
+            }
         }
     }
 
-    fun navigateExplorerTo(folder: MediaFile) {
-        if (!folder.isDirectory) return
-        pathBackStack.add(folder.path)
-        openExplorerPath(folder.path)
-    }
-
-    fun navigateExplorerBack(): Boolean {
-        if (pathBackStack.isEmpty()) return false
-        pathBackStack.removeAt(pathBackStack.lastIndex)
-        val prevPath = pathBackStack.lastOrNull() ?: "/"
-        openExplorerPath(prevPath)
-        return true
+    fun navigateExplorerTo(file: MediaFile) {
+        if (file.isDirectory) {
+            openExplorerPath(file.path)
+        }
     }
 }
