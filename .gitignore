@@ -1,0 +1,9 @@
+*.zip
+*.tar.gz
+gradle-8.7/
+build/
+*/build/
+.gradle/
+local.properties
+.idea/
+*.iml
