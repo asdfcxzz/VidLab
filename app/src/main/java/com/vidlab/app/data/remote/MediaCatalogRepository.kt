@@ -20,8 +20,7 @@ class MediaCatalogRepository(
     fun getCachedFeed(): List<MediaFeedSection>? {
         return try {
             if (cacheFile.exists()) {
-                val content = cacheFile.readText()
-                json.decodeFromString<List<MediaFeedSection>>(content)
+                json.decodeFromString<List<MediaFeedSection>>(cacheFile.readText())
             } else null
         } catch (_: Exception) {
             null
@@ -30,19 +29,26 @@ class MediaCatalogRepository(
 
     suspend fun buildMediaCenterFeed(): Result<List<MediaFeedSection>> = withContext(Dispatchers.IO) {
         runCatching {
-            val rootListing = webDavClient.listDirectory("/").getOrThrow()
-            val allRawEntries = mutableListOf<MediaFile>()
+            // Recursive scan of all video files
+            val allVideoFiles = mutableListOf<MediaFile>()
+            val queue = ArrayDeque<String>()
+            queue.add("/")
 
-            for (item in rootListing) {
-                if (item.isDirectory) {
-                    val sub = webDavClient.listDirectory(item.path).getOrDefault(emptyList())
-                    allRawEntries.addAll(sub)
-                } else if (item.isVideo) {
-                    allRawEntries.add(item)
+            var depth = 0
+            while (queue.isNotEmpty() && depth < 100) {
+                depth++
+                val currentPath = queue.removeFirst()
+                val entries = webDavClient.listDirectory(currentPath).getOrDefault(emptyList())
+                for (entry in entries) {
+                    if (entry.isDirectory) {
+                        queue.add(entry.path)
+                    } else if (entry.isVideo) {
+                        allVideoFiles.add(entry)
+                    }
                 }
             }
 
-            val scrapedItems = processDirectoryEntries(allRawEntries)
+            val scrapedItems = groupAndScrapeMedia(allVideoFiles)
 
             val animeList = mutableListOf<ScrapedMediaItem>()
             val tvList = mutableListOf<ScrapedMediaItem>()
@@ -73,32 +79,59 @@ class MediaCatalogRepository(
         }
     }
 
-    private suspend fun processDirectoryEntries(entries: List<MediaFile>): List<ScrapedMediaItem> = coroutineScope {
+    private suspend fun groupAndScrapeMedia(files: List<MediaFile>): List<ScrapedMediaItem> = coroutineScope {
+        // Group files by show title / canonical key
         val seriesBuckets = mutableMapOf<String, MutableList<Pair<MediaFile, Int>>>()
         val standaloneVideos = mutableListOf<MediaFile>()
 
-        for (entry in entries) {
-            if (entry.isDirectory) {
-                val parsed = FilenameSanitizer.parse(entry.name)
-                val key = parsed.canonicalKey.ifEmpty { entry.name.lowercase().replace(" ", "") }
-                seriesBuckets.getOrPut(key) { mutableListOf() }.add(Pair(entry, parsed.season))
-            } else if (entry.isVideo) {
-                standaloneVideos.add(entry)
+        for (file in files) {
+            // Check file name and parent folder names for series indicators
+            val pathParts = file.path.split("/").filter { it.isNotBlank() }
+            val fileParsed = FilenameSanitizer.parse(file.name)
+
+            var detectedSeason = fileParsed.season
+            var showName = fileParsed.cleanTitle
+            var isSeries = fileParsed.isSeries
+
+            // Check if enclosed in a Season X or Show Name folder
+            if (pathParts.size >= 2) {
+                val parentFolder = pathParts[pathParts.size - 2]
+                val parentParsed = FilenameSanitizer.parse(parentFolder)
+                if (parentParsed.isSeries || parentFolder.contains("season", true) || parentFolder.matches(Regex("(?i)s\\d+"))) {
+                    isSeries = true
+                    if (parentParsed.season > 1 || detectedSeason == 1) {
+                        detectedSeason = parentParsed.season
+                    }
+                    if (pathParts.size >= 3) {
+                        showName = FilenameSanitizer.parse(pathParts[pathParts.size - 3]).cleanTitle
+                    }
+                } else if (pathParts.size >= 2 && !fileParsed.isSeries) {
+                    // Parent folder might be the show name
+                    if (files.count { it.path.startsWith(file.path.substringBeforeLast('/')) } > 1) {
+                        showName = parentParsed.cleanTitle
+                        isSeries = true
+                    }
+                }
+            }
+
+            val canonicalKey = showName.lowercase().replace(Regex("[^a-z0-9]"), "")
+
+            if (isSeries) {
+                seriesBuckets.getOrPut(canonicalKey) { mutableListOf() }.add(Pair(file, detectedSeason))
+            } else {
+                standaloneVideos.add(file)
             }
         }
 
-        val seriesDeferred = seriesBuckets.entries.map { (_, folderList) ->
+        val seriesDeferred = seriesBuckets.entries.map { (_, filePairs) ->
             async {
-                val baseFolder = folderList.first().first
-                val (meta, scrapedEpisodesMap) = scraper.fetchDetailedMetadata(baseFolder.name)
-                val cleanTitle = meta?.title ?: FilenameSanitizer.parse(baseFolder.name).cleanTitle
+                val sampleFile = filePairs.first().first
+                val (meta, scrapedEpisodesMap) = scraper.fetchDetailedMetadata(sampleFile.name)
+                val cleanTitle = meta?.title ?: FilenameSanitizer.parse(sampleFile.name).cleanTitle
 
-                val seasons = mutableListOf<SeasonGroup>()
-                for ((folder, sNum) in folderList) {
-                    val filesInside = webDavClient.listDirectory(folder.path).getOrDefault(emptyList())
-                    val videoFiles = filesInside.filter { it.isVideo }.sortedBy { it.name }
-
-                    val processedList = videoFiles.mapIndexed { idx, epFile ->
+                // Group into seasons
+                val seasonGroups = filePairs.groupBy { it.second }.map { (sNum, pairs) ->
+                    val sortedEps = pairs.map { it.first }.sortedBy { it.name }.mapIndexed { idx, epFile ->
                         val epParsed = FilenameSanitizer.parse(epFile.name)
                         val epNum = epParsed.episode ?: (idx + 1)
                         val key = "S${sNum}E${epNum}"
@@ -112,24 +145,20 @@ class MediaCatalogRepository(
                             thumbnail = scrapedEp?.thumbnail ?: meta?.backdropUrl ?: meta?.posterUrl
                         )
                     }
+                    SeasonGroup(seasonNumber = sNum, episodes = sortedEps)
+                }.sortedBy { it.seasonNumber }
 
-                    if (processedList.isNotEmpty()) {
-                        seasons.add(SeasonGroup(seasonNumber = sNum, episodes = processedList))
-                    }
-                }
-
-                seasons.sortBy { it.seasonNumber }
-                val firstPlayable = seasons.firstOrNull()?.episodes?.firstOrNull()?.file ?: baseFolder
+                val firstPlayable = seasonGroups.firstOrNull()?.episodes?.firstOrNull()?.file ?: sampleFile
 
                 ScrapedMediaItem(
-                    id = baseFolder.path,
+                    id = cleanTitle,
                     title = cleanTitle,
                     posterUrl = meta?.posterUrl,
                     backdropUrl = meta?.backdropUrl ?: meta?.posterUrl,
                     releaseYear = meta?.releaseYear,
                     isSeries = true,
                     primaryFile = firstPlayable,
-                    seasons = seasons,
+                    seasons = seasonGroups,
                     metadata = meta
                 )
             }

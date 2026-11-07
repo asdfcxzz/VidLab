@@ -1,6 +1,7 @@
 package com.vidlab.app.ui.catalog
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -32,6 +35,7 @@ import coil.compose.AsyncImage
 import com.vidlab.app.data.model.MediaFeedSection
 import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
+import kotlinx.coroutines.delay
 
 private val DeepPurpleBg = Color(0xFF09070F)
 private val SurfaceDark = Color(0xFF141120)
@@ -39,91 +43,129 @@ private val BorderPurple = Color(0xFF26203B)
 private val AccentViolet = Color(0xFF8B5CF6)
 private val SecondaryText = Color(0xFF9E95B8)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HeroBillboard(
-    featuredItem: ScrapedMediaItem,
-    onWatchNow: () -> Unit,
+fun HeroCarousel(
+    featuredItems: List<ScrapedMediaItem>,
+    onWatchNow: (ScrapedMediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(440.dp)
-    ) {
-        val bgUrl = featuredItem.backdropUrl ?: featuredItem.posterUrl
-        if (!bgUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = bgUrl,
-                contentDescription = featuredItem.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+    if (featuredItems.isEmpty()) return
+
+    val pagerState = rememberPagerState(pageCount = { featuredItems.size })
+
+    LaunchedEffect(pagerState) {
+        while (true) {
+            delay(5000)
+            if (!pagerState.isScrollInProgress && featuredItems.size > 1) {
+                val next = (pagerState.currentPage + 1) % featuredItems.size
+                pagerState.animateScrollToPage(next)
+            }
         }
+    }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0x8809070F), Color.Transparent, DeepPurpleBg),
-                        startY = 0f,
-                        endY = 1100f
+    Box(modifier = modifier.fillMaxWidth().height(440.dp)) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val item = featuredItems[page]
+            val bgUrl = item.backdropUrl ?: item.posterUrl
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (!bgUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = bgUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                )
-        )
+                }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp, start = 20.dp, end = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = featuredItem.title,
-                color = Color.White,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            val genres = featuredItem.metadata?.genres?.take(3) ?: emptyList()
-            if (genres.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    genres.forEach { genre ->
-                        Surface(
-                            color = Color(0x661E1A2E),
-                            shape = CircleShape,
-                            modifier = Modifier.border(0.5.dp, BorderPurple, CircleShape)
-                        ) {
-                            Text(
-                                text = genre,
-                                color = Color(0xFFDDD8EC),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color(0x6609070F), Color.Transparent, DeepPurpleBg),
+                                startY = 0f,
+                                endY = 1100f
                             )
+                        )
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 28.dp, start = 20.dp, end = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = item.title,
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val genres = item.metadata?.genres?.take(3) ?: emptyList()
+                    if (genres.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            genres.forEach { genre ->
+                                Surface(
+                                    color = Color(0x661E1A2E),
+                                    shape = CircleShape,
+                                    modifier = Modifier.border(0.5.dp, BorderPurple, CircleShape)
+                                ) {
+                                    Text(
+                                        text = genre,
+                                        color = Color(0xFFDDD8EC),
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
                         }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    Button(
+                        onClick = { onWatchNow(item) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8DEF8)),
+                        shape = CircleShape,
+                        modifier = Modifier.width(150.dp).height(42.dp)
+                    ) {
+                        Text(
+                            text = "Watch now",
+                            color = Color.Black,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-                Spacer(modifier = Modifier.height(14.dp))
             }
+        }
 
-            Button(
-                onClick = onWatchNow,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8DEF8)),
-                shape = CircleShape,
+        // Carousel Dot Indicators
+        if (featuredItems.size > 1) {
+            Row(
                 modifier = Modifier
-                    .width(160.dp)
-                    .height(44.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = "Watch now",
-                    color = Color.Black,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                repeat(featuredItems.size) { iteration ->
+                    val isCurrent = pagerState.currentPage == iteration
+                    Box(
+                        modifier = Modifier
+                            .size(if (isCurrent) 18.dp else 6.dp, 6.dp)
+                            .clip(CircleShape)
+                            .background(if (isCurrent) AccentViolet else Color(0x66FFFFFF))
+                    )
+                }
             }
         }
     }
@@ -215,7 +257,6 @@ fun MediaCenterScreen(
     errorMessage: String?,
     onOpenFileSource: () -> Unit,
     onRescan: () -> Unit,
-    onPlayFile: (MediaFile) -> Unit,
     onSelectItem: (ScrapedMediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -223,9 +264,11 @@ fun MediaCenterScreen(
     var searchQuery by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
 
-    val featuredItem = remember(sections) {
-        sections.flatMap { it.items }.firstOrNull { !it.backdropUrl.isNullOrBlank() }
-            ?: sections.firstOrNull()?.items?.firstOrNull()
+    val carouselItems = remember(sections) {
+        sections.flatMap { it.items }
+            .filter { !it.backdropUrl.isNullOrBlank() }
+            .distinctBy { it.title }
+            .take(6)
     }
 
     val filteredSections = remember(sections, searchQuery) {
@@ -243,7 +286,7 @@ fun MediaCenterScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Transparent)
+                    .background(DeepPurpleBg.copy(alpha = 0.9f))
                     .statusBarsPadding()
             ) {
                 Row(
@@ -255,9 +298,14 @@ fun MediaCenterScreen(
                 ) {
                     IconButton(
                         onClick = onOpenFileSource,
-                        modifier = Modifier.size(38.dp).background(Color(0x5509070F), CircleShape)
+                        modifier = Modifier.size(40.dp).background(Color(0x33FFFFFF), CircleShape)
                     ) {
-                        Icon(imageVector = Icons.Default.Menu, contentDescription = "Source Menu", tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = "File Manager",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
 
                     Row(
@@ -269,14 +317,19 @@ fun MediaCenterScreen(
                                 isSearchActive = !isSearchActive
                                 if (!isSearchActive) searchQuery = ""
                             },
-                            modifier = Modifier.size(38.dp).background(Color(0x5509070F), CircleShape)
+                            modifier = Modifier.size(40.dp).background(Color(0x33FFFFFF), CircleShape)
                         ) {
-                            Icon(imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search, contentDescription = "Search", tint = Color.White, modifier = Modifier.size(20.dp))
+                            Icon(
+                                imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
                         IconButton(
                             onClick = onRescan,
-                            modifier = Modifier.size(38.dp).background(Color(0x5509070F), CircleShape)
+                            modifier = Modifier.size(40.dp).background(Color(0x33FFFFFF), CircleShape)
                         ) {
                             if (isLoading) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = AccentViolet)
@@ -317,73 +370,38 @@ fun MediaCenterScreen(
                 }
             }
         },
-        bottomBar = {
-            Surface(
-                color = Color(0xF013111C),
-                shape = CircleShape,
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 10.dp)
-                    .border(1.dp, BorderPurple, CircleShape)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(imageVector = Icons.Default.Home, contentDescription = "Home", tint = Color.White, modifier = Modifier.size(20.dp))
-                        Text("Home", color = Color.White, fontSize = 9.sp)
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { isSearchActive = true }
-                    ) {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = SecondaryText, modifier = Modifier.size(20.dp))
-                        Text("Search", color = SecondaryText, fontSize = 9.sp)
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { onOpenFileSource() }
-                    ) {
-                        Icon(imageVector = Icons.Default.Folder, contentDescription = "Library", tint = SecondaryText, modifier = Modifier.size(20.dp))
-                        Text("Library", color = SecondaryText, fontSize = 9.sp)
-                    }
-                }
-            }
-        },
         containerColor = DeepPurpleBg,
         modifier = modifier
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = padding.calculateBottomPadding())
+                .padding(padding)
         ) {
             LazyColumn(
                 contentPadding = PaddingValues(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                if (!isSearchActive && featuredItem != null) {
+                if (!isSearchActive && carouselItems.isNotEmpty()) {
                     item {
-                        HeroBillboard(
-                            featuredItem = featuredItem,
-                            onWatchNow = { onSelectItem(featuredItem) }
+                        HeroCarousel(
+                            featuredItems = carouselItems,
+                            onWatchNow = { onSelectItem(it) }
                         )
                     }
                 }
 
                 items(filteredSections) { section ->
                     Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = section.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = section.title,
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)

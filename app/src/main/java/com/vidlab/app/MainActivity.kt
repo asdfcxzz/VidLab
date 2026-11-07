@@ -3,6 +3,7 @@ package com.vidlab.app
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -42,6 +43,12 @@ class MainActivity : ComponentActivity() {
 
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var showSourceSheet by remember { mutableStateOf(false) }
+
+            // Handle system back gesture inside detail view
+            BackHandler(enabled = selectedItem != null) {
+                selectedItem = null
+            }
+
             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF09070F))) {
                 if (selectedItem != null) {
                     MediaDetailScreen(
@@ -59,7 +66,6 @@ class MainActivity : ComponentActivity() {
                             showSourceSheet = true
                         },
                         onRescan = { viewModel.loadMediaCenter() },
-                        onPlayFile = { file -> launchPlayer(file) },
                         onSelectItem = { item -> selectedItem = item }
                     )
                 }
