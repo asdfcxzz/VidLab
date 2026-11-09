@@ -44,6 +44,9 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
     private val _isSingleRenaming = MutableStateFlow(false)
     val isSingleRenaming: StateFlow<Boolean> = _isSingleRenaming.asStateFlow()
 
+    private val _searchResults = MutableStateFlow<List<TmdbSearchResult>>(emptyList())
+    val searchResults: StateFlow<List<TmdbSearchResult>> = _searchResults.asStateFlow()
+
     val ambiguousPrompts: SharedFlow<AmbiguousPrompt> = repository.ambiguousMatchesFlow
 
     init {
@@ -65,9 +68,23 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // Prepare rename plan for a specific library item (e.g. Animals, My Hero Academia S7)
-    fun prepareSingleItemRename(item: ScrapedMediaItem) {
-        _singleRenamePlan.value = repository.generateRenamePlan(item)
+    fun searchCandidates(query: String) {
+        viewModelScope.launch {
+            _searchResults.value = repository.scraper.searchMetadata(query)
+        }
+    }
+
+    fun applyCandidateSelection(item: ScrapedMediaItem, candidate: TmdbSearchResult) {
+        repository.saveManualBinding(item.id, candidate.title, candidate.mediaType, candidate.year)
+        val updatedItem = item.copy(title = candidate.title, releaseYear = candidate.year)
+        _singleRenamePlan.value = repository.generateRenamePlan(updatedItem, candidate.title, candidate.year)
+    }
+
+    fun applyManualCustomRename(item: ScrapedMediaItem, title: String, year: String?) {
+        val type = if (item.isSeries) "tv" else "movie"
+        repository.saveManualBinding(item.id, title, type, year)
+        val updatedItem = item.copy(title = title, releaseYear = year)
+        _singleRenamePlan.value = repository.generateRenamePlan(updatedItem, title, year)
     }
 
     fun dismissSingleRenamePlan() {
@@ -104,7 +121,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             _progressState.update {
                 it.copy(
                     isRunning = true,
-                    currentStep = "Scanning storage for unstructured media...",
+                    currentStep = "Scanning storage for media...",
                     logs = listOf("Starting WebDAV crawl..."),
                     isCompleted = false,
                     error = null
@@ -131,7 +148,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         isRunning = false,
                         isCompleted = true,
-                        currentStep = "All files are already organized in .mkv format.",
+                        currentStep = "All files are already correctly structured.",
                         logs = it.logs + "No pending rename operations."
                     )
                 }
@@ -149,14 +166,14 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             for (op in allOps) {
                 _progressState.update {
                     it.copy(
-                        currentFile = "${op.fileName} ➔${op.newFileName}",
+                        currentFile = "${op.fileName} ➔ ${op.newFileName}",
                         processedCount = completed
                     )
                 }
 
                 val moveResult = repository.webDavClient.moveFile(op.oldPath, op.newPath)
                 val logEntry = if (moveResult.isSuccess) {
-                    "✓ Moved: ${op.fileName} ->${op.newPath}"
+                    "✓ Moved: ${op.fileName} -> ${op.newPath}"
                 } else {
                     "✗ Failed: ${op.fileName} (${moveResult.exceptionOrNull()?.localizedMessage})"
                 }
@@ -180,10 +197,5 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
 
             loadMediaCenter()
         }
-    }
-
-    fun applyManualRematch(mediaKey: String, id: String, mediaType: String) {
-        repository.saveManualBinding(mediaKey, id, mediaType)
-        loadMediaCenter()
     }
 }

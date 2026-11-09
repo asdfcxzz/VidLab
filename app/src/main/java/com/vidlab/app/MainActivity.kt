@@ -7,20 +7,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.vidlab.app.data.model.AmbiguousPrompt
 import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
@@ -44,8 +35,10 @@ class MainActivity : ComponentActivity() {
             val progressState by viewModel.progressState.collectAsState()
             val singleRenamePlan by viewModel.singleRenamePlan.collectAsState()
             val isSingleRenaming by viewModel.isSingleRenaming.collectAsState()
+            val searchResults by viewModel.searchResults.collectAsState()
 
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
+            var itemForOptions by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var showRenamerModal by remember { mutableStateOf(false) }
             var showSourceSheet by remember { mutableStateOf(false) }
             var activeAmbiguousPrompt by remember { mutableStateOf<AmbiguousPrompt?>(null) }
@@ -60,11 +53,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BackHandler(enabled = drawerState.isOpen || selectedItem != null || showRenamerModal || singleRenamePlan != null || showSourceSheet) {
+            BackHandler(enabled = drawerState.isOpen || selectedItem != null || showRenamerModal || singleRenamePlan != null || itemForOptions != null) {
                 if (drawerState.isOpen) coroutineScope.launch { drawerState.close() }
                 else if (singleRenamePlan != null) viewModel.dismissSingleRenamePlan()
+                else if (itemForOptions != null) itemForOptions = null
                 else if (showRenamerModal) showRenamerModal = false
-                else if (showSourceSheet) showSourceSheet = false
                 else selectedItem = null
             }
 
@@ -96,9 +89,13 @@ class MainActivity : ComponentActivity() {
                             item = selectedItem!!,
                             onBack = { selectedItem = null },
                             onPlayFile = { file -> launchPlayer(file) },
-                            onRematch = {},
+                            onRematch = { item ->
+                                itemForOptions = item
+                                viewModel.searchCandidates(item.title)
+                            },
                             onRenamePermanently = { item ->
-                                viewModel.prepareSingleItemRename(item)
+                                itemForOptions = item
+                                viewModel.searchCandidates(item.title)
                             }
                         )
                     } else {
@@ -109,11 +106,32 @@ class MainActivity : ComponentActivity() {
                             onOpenDrawer = { coroutineScope.launch { drawerState.open() } },
                             onRescan = { viewModel.loadMediaCenter() },
                             onSelectItem = { item -> selectedItem = item },
-                            onRematchItem = {}
+                            onRematchItem = { item ->
+                                itemForOptions = item
+                                viewModel.searchCandidates(item.title)
+                            }
                         )
                     }
 
-                    // Specific Item Rename Preview Bottom Sheet
+                    // Dialog to pick Movie vs Show vs Manual Custom Name
+                    if (itemForOptions != null) {
+                        RenameOptionsDialog(
+                            item = itemForOptions!!,
+                            searchResults = searchResults,
+                            onSearch = { query -> viewModel.searchCandidates(query) },
+                            onSelectMatch = { cand ->
+                                viewModel.applyCandidateSelection(itemForOptions!!, cand)
+                                itemForOptions = null
+                            },
+                            onManualApply = { title, year ->
+                                viewModel.applyManualCustomRename(itemForOptions!!, title, year)
+                                itemForOptions = null
+                            },
+                            onDismiss = { itemForOptions = null }
+                        )
+                    }
+
+                    // Operation Preview Sheet
                     if (singleRenamePlan != null) {
                         RenamePreviewBottomSheet(
                             operations = singleRenamePlan!!,
@@ -127,7 +145,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // Batch Renamer Drawer Bottom Sheet
+                    // Batch Storage Renamer Modal
                     if (showRenamerModal) {
                         ModalBottomSheet(
                             onDismissRequest = { if (!progressState.isRunning) showRenamerModal = false },
@@ -140,15 +158,18 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Ambiguous Match Manual Selector Dialog
+                    // Ambiguous Confirmation Prompt
                     if (activeAmbiguousPrompt != null) {
                         AmbiguousMatchDialog(
                             prompt = activeAmbiguousPrompt!!,
                             onSelectMatch = { cand ->
-                                viewModel.applyManualRematch(
-                                    activeAmbiguousPrompt!!.mediaKey,
-                                    cand.id.toString(),
-                                    cand.mediaType
+                                viewModel.applyCandidateSelection(
+                                    ScrapedMediaItem(
+                                        id = activeAmbiguousPrompt!!.mediaKey,
+                                        title = cand.title,
+                                        primaryFile = MediaFile("", "", false)
+                                    ),
+                                    cand
                                 )
                                 activeAmbiguousPrompt = null
                             },
