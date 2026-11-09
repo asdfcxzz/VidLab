@@ -27,6 +27,12 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
     private val _searchResults = MutableStateFlow<List<TmdbSearchResult>>(emptyList())
     val searchResults: StateFlow<List<TmdbSearchResult>> = _searchResults.asStateFlow()
 
+    private val _renamePlan = MutableStateFlow<List<RenameOperation>?>(null)
+    val renamePlan: StateFlow<List<RenameOperation>?> = _renamePlan.asStateFlow()
+
+    private val _isRenaming = MutableStateFlow(false)
+    val isRenaming: StateFlow<Boolean> = _isRenaming.asStateFlow()
+
     val ambiguousPrompts: SharedFlow<AmbiguousPrompt> = repository.ambiguousMatchesFlow
 
     init {
@@ -53,9 +59,9 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun searchTmdb(query: String) {
+    fun searchMetadata(query: String) {
         viewModelScope.launch {
-            _searchResults.value = repository.scraper.searchTmdb(query)
+            _searchResults.value = repository.scraper.searchMetadata(query)
         }
     }
 
@@ -63,9 +69,33 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         _searchResults.value = emptyList()
     }
 
-    fun applyManualRematch(mediaKey: String, tmdbId: Int, mediaType: String) {
-        repository.saveManualBinding(mediaKey, tmdbId, mediaType)
+    fun applyManualRematch(mediaKey: String, id: String, mediaType: String) {
+        repository.saveManualBinding(mediaKey, id, mediaType)
         loadMediaCenter()
+    }
+
+    fun prepareRenamePlan(item: ScrapedMediaItem) {
+        _renamePlan.value = repository.generateRenamePlan(item)
+    }
+
+    fun dismissRenamePlan() {
+        _renamePlan.value = null
+    }
+
+    fun executeRename(onSuccess: () -> Unit) {
+        val plan = _renamePlan.value ?: return
+        viewModelScope.launch {
+            _isRenaming.value = true
+            repository.executeBatchRename(plan).onSuccess {
+                _isRenaming.value = false
+                _renamePlan.value = null
+                onSuccess()
+                loadMediaCenter()
+            }.onFailure { err ->
+                _isRenaming.value = false
+                _feedError.value = "Rename error: ${err.localizedMessage}"
+            }
+        }
     }
 
     fun openExplorerPath(path: String) {

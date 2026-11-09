@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -41,6 +42,7 @@ fun MediaDetailScreen(
     onBack: () -> Unit,
     onPlayFile: (MediaFile) -> Unit,
     onRematch: (ScrapedMediaItem) -> Unit,
+    onRenamePermanently: (ScrapedMediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedSeasonIndex by remember { mutableIntStateOf(0) }
@@ -72,7 +74,6 @@ fun MediaDetailScreen(
                             )
                     )
 
-                    // Top Bar (Back Button + Rematch Button)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -96,7 +97,6 @@ fun MediaDetailScreen(
                         }
                     }
 
-                    // Title & Specs
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -122,24 +122,41 @@ fun MediaDetailScreen(
                 }
             }
 
-            // Play Button
+            // Play & Permanent Rename Row
             item {
-                Button(
-                    onClick = { onPlayFile(item.primaryFile) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(8.dp),
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                        .height(48.dp)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Play", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = { onPlayFile(item.primaryFile) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Play", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { onRenamePermanently(item) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F1A30)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .border(1.dp, BorderPurple, RoundedCornerShape(8.dp))
+                    ) {
+                        Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = AccentViolet)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Rename Files", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
-            // Season Tabs & Episodes (for series)
             if (item.isSeries && item.seasons.isNotEmpty()) {
                 item {
                     Column(modifier = Modifier.padding(top = 12.dp)) {
@@ -216,7 +233,7 @@ fun MediaDetailScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "${ep.episodeNumber}. ${ep.title}",
+                                    text = ep.title,
                                     color = Color.White,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
@@ -225,11 +242,9 @@ fun MediaDetailScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = ep.file.name,
+                                    text = "Season ${ep.seasonNumber} • Episode ${ep.episodeNumber}",
                                     color = SecondaryText,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    fontSize = 11.sp
                                 )
                             }
                         }

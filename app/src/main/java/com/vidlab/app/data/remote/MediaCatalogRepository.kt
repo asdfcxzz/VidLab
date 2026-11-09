@@ -18,7 +18,7 @@ class MediaCatalogRepository(
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
-    private val cacheFile = File(context.filesDir, "catalog_cache_v11.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v13.json")
     private val manualBindingsFile = File(context.filesDir, "manual_bindings.json")
 
     private val _ambiguousMatchesFlow = MutableSharedFlow<AmbiguousPrompt>(replay = 5)
@@ -35,9 +35,9 @@ class MediaCatalogRepository(
         }
     }
 
-    fun saveManualBinding(mediaKey: String, tmdbId: Int, mediaType: String) {
+    fun saveManualBinding(mediaKey: String, imdbId: String, mediaType: String) {
         val bindings = getManualBindings()
-        bindings[mediaKey] = "$tmdbId:$mediaType"
+        bindings[mediaKey] = "$imdbId:$mediaType"
         manualBindingsFile.writeText(json.encodeToString(bindings))
         cacheFile.delete()
     }
@@ -69,8 +69,11 @@ class MediaCatalogRepository(
 
                 val entries = webDavClient.listDirectory(currentPath).getOrDefault(emptyList())
                 for (entry in entries) {
+                    val decodedEntryPath = URLDecoder.decode(entry.path, "UTF-8")
                     if (entry.isDirectory) {
-                        if (entry.path !in visited) queue.add(entry.path)
+                        if (entry.path !in visited && decodedEntryPath !in visited) {
+                            queue.add(entry.path)
+                        }
                     } else {
                         val ext = entry.name.substringAfterLast('.', "").lowercase()
                         if (ext in videoExtensions) {
@@ -167,7 +170,7 @@ class MediaCatalogRepository(
                 val binding = manualBindings[key]
                 val (forcedId, forcedType) = if (binding != null && binding.contains(":")) {
                     val sp = binding.split(":")
-                    Pair(sp[0].toIntOrNull(), sp[1])
+                    Pair(sp[0], sp[1])
                 } else Pair(null, null)
 
                 val matchResult = scraper.scrapeWithVerification(cleanShowName, forcedId, forcedType)
@@ -214,11 +217,8 @@ class MediaCatalogRepository(
                     val scrapedEp = finalEpisodesMap[epKey]
 
                     val formattedEp = String.format("S%02dE%02d", sNum, epNum)
-                    val finalEpTitle = if (!scrapedEp?.title.isNullOrBlank()) {
-                        "$formattedEp • ${scrapedEp!!.title}"
-                    } else {
-                        "$formattedEp • Episode $epNum"
-                    }
+                    val epName = if (!scrapedEp?.title.isNullOrBlank()) scrapedEp!!.title else "Episode $epNum"
+                    val finalEpTitle = "$formattedEp • $epName"
 
                     seasonMap.getOrPut(sNum) { mutableListOf() }.add(
                         ProcessedEpisode(
@@ -261,7 +261,7 @@ class MediaCatalogRepository(
                 val binding = manualBindings[key]
                 val (forcedId, forcedType) = if (binding != null && binding.contains(":")) {
                     val sp = binding.split(":")
-                    Pair(sp[0].toIntOrNull(), sp[1])
+                    Pair(sp[0], sp[1])
                 } else Pair(null, null)
 
                 val matchResult = scraper.scrapeWithVerification(clean, forcedId, forcedType)
@@ -295,6 +295,59 @@ class MediaCatalogRepository(
         }
 
         (seriesDeferred + movieDeferred).awaitAll()
+    }
+
+    // Generate Permanent Rename Plan (Series restructuring vs Movies in-place)
+    fun generateRenamePlan(item: ScrapedMediaItem): List<RenameOperation> {
+        val plan = mutableListOf<RenameOperation>()
+        val cleanShowOrMovieTitle = sanitizeFsName(item.title)
+
+        if (item.isSeries) {
+            for (season in item.seasons) {
+                val seasonFolder = String.format("Season %02d", season.seasonNumber)
+                for (ep in season.episodes) {
+                    val ext = ep.file.name.substringAfterLast('.', "mkv")
+                    val epTitleClean = ep.title.substringAfter("•").trim().let { sanitizeFsName(it) }
+                    val newFileName = String.format("%s - S%02dE%02d - %s.%s", cleanShowOrMovieTitle, season.seasonNumber, ep.episodeNumber, epTitleClean, ext)
+                    
+                    // Root parent directory of the original show
+                    val oldParts = URLDecoder.decode(ep.file.path, "UTF-8").trim('/').split('/')
+                    val rootDir = if (oldParts.size > 2) "/" + oldParts.first() else ""
+                    val newFullPath = "$rootDir/$cleanShowOrMovieTitle/$seasonFolder/$newFileName"
+
+                    if (ep.file.path != newFullPath) {
+                        plan.add(RenameOperation(ep.file.path, newFullPath, ep.file.name, newFileName))
+                    }
+                }
+            }
+        } else {
+            // Movies: Stay in their original parent directory, just rename in-place
+            val decodedOldPath = URLDecoder.decode(item.primaryFile.path, "UTF-8")
+            val parentDir = decodedOldPath.substringBeforeLast('/')
+            val ext = item.primaryFile.name.substringAfterLast('.', "mp4")
+            val yearSuffix = if (!item.releaseYear.isNullOrBlank()) " (${item.releaseYear})" else ""
+            val newFileName = "$cleanShowOrMovieTitle$yearSuffix.$ext"
+            val newFullPath = "$parentDir/$newFileName"
+
+            if (item.primaryFile.path != newFullPath) {
+                plan.add(RenameOperation(item.primaryFile.path, newFullPath, item.primaryFile.name, newFileName))
+            }
+        }
+        return plan
+    }
+
+    suspend fun executeBatchRename(operations: List<RenameOperation>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            for (op in operations) {
+                webDavClient.moveFile(op.oldPath, op.newPath).getOrThrow()
+            }
+            cacheFile.delete() // invalidate cached library
+            Unit
+        }
+    }
+
+    private fun sanitizeFsName(name: String): String {
+        return name.replace(Regex("""[/\\?%*:|"<>]"""), "").trim()
     }
 
     suspend fun getRawDirectory(path: String): Result<List<MediaFile>> = webDavClient.listDirectory(path)

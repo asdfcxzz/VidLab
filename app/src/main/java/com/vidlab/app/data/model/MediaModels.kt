@@ -72,3 +72,11 @@ data class AmbiguousPrompt(
     val rawName: String,
     val candidates: List<TmdbSearchResult>
 )
+
+@Serializable
+data class RenameOperation(
+    val oldPath: String,
+    val newPath: String,
+    val fileName: String,
+    val newFileName: String
+)

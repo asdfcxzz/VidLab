@@ -29,68 +29,136 @@ sealed class MatchResult {
 
 class MetadataScraper(
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
-    private val apiKey = "4f298a53e5522830cac57f7aab3f7d14"
-
-    suspend fun searchTmdb(query: String): List<TmdbSearchResult> = withContext(Dispatchers.IO) {
+    suspend fun searchMetadata(query: String): List<TmdbSearchResult> = withContext(Dispatchers.IO) {
         val clean = FilenameSanitizer.parse(query).cleanTitle.ifEmpty { query }
         val encoded = URLEncoder.encode(clean, "UTF-8")
-        val url = "https://api.themoviedb.org/3/search/multi?api_key=$apiKey&query=$encoded&include_adult=false"
+        val results = mutableListOf<TmdbSearchResult>()
 
+        // 1. Search series on Cinemeta
         try {
-            val req = Request.Builder()
-                .url(url)
-                .header("User-Agent", "VidLab/1.0 (Android)")
-                .build()
-            val resp = client.newCall(req).execute()
-            val body = resp.body?.string() ?: return@withContext emptyList()
-            val obj = json.parseToJsonElement(body).jsonObject
-            val results = obj["results"]?.jsonArray ?: return@withContext emptyList()
-
-            results.mapNotNull { elem ->
-                val o = elem.jsonObject
-                val type = o["media_type"]?.jsonPrimitive?.contentOrNull ?: ""
-                if (type != "tv" && type != "movie") return@mapNotNull null
-
-                val id = o["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
-                val name = o["name"]?.jsonPrimitive?.contentOrNull ?: o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val date = o["first_air_date"]?.jsonPrimitive?.contentOrNull ?: o["release_date"]?.jsonPrimitive?.contentOrNull ?: ""
-                val year = if (date.length >= 4) date.take(4) else null
-                val posterPath = o["poster_path"]?.jsonPrimitive?.contentOrNull
-                val poster = if (posterPath != null) "https://image.tmdb.org/t/p/w500$posterPath" else null
-
-                TmdbSearchResult(id, name, type, year, poster)
+            val url = "https://v3-cinemeta.strem.io/catalog/series/top/search=$encoded.json"
+            val resp = client.newCall(Request.Builder().url(url).build()).execute()
+            val body = resp.body?.string() ?: ""
+            val metas = json.parseToJsonElement(body).jsonObject["metas"]?.jsonArray ?: JsonArray(emptyList())
+            for (m in metas.take(5)) {
+                val o = m.jsonObject
+                val idStr = o["id"]?.jsonPrimitive?.contentOrNull ?: ""
+                val idNum = idStr.filter { it.isDigit() }.toIntOrNull() ?: idStr.hashCode()
+                val name = o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                val year = o["year"]?.jsonPrimitive?.contentOrNull
+                val poster = o["poster"]?.jsonPrimitive?.contentOrNull
+                if (name.isNotBlank()) {
+                    results.add(TmdbSearchResult(idNum, name, "tv", year, poster))
+                }
             }
-        } catch (_: Exception) {
-            emptyList()
-        }
+        } catch (_: Exception) {}
+
+        // 2. Search movies on Cinemeta
+        try {
+            val url = "https://v3-cinemeta.strem.io/catalog/movie/top/search=$encoded.json"
+            val resp = client.newCall(Request.Builder().url(url).build()).execute()
+            val body = resp.body?.string() ?: ""
+            val metas = json.parseToJsonElement(body).jsonObject["metas"]?.jsonArray ?: JsonArray(emptyList())
+            for (m in metas.take(5)) {
+                val o = m.jsonObject
+                val idStr = o["id"]?.jsonPrimitive?.contentOrNull ?: ""
+                val idNum = idStr.filter { it.isDigit() }.toIntOrNull() ?: idStr.hashCode()
+                val name = o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                val year = o["year"]?.jsonPrimitive?.contentOrNull
+                val poster = o["poster"]?.jsonPrimitive?.contentOrNull
+                if (name.isNotBlank()) {
+                    results.add(TmdbSearchResult(idNum, name, "movie", year, poster))
+                }
+            }
+        } catch (_: Exception) {}
+
+        results
     }
 
-    suspend fun scrapeWithVerification(rawTitle: String, forcedId: Int? = null, forcedType: String? = null): MatchResult = withContext(Dispatchers.IO) {
-        if (forcedId != null && forcedType != null) {
-            val (meta, eps) = if (forcedType == "tv") fetchTvDetails(forcedId) else fetchMovieDetails(forcedId)
+    suspend fun scrapeWithVerification(rawTitle: String, forcedImdbId: String? = null, forcedType: String? = null): MatchResult = withContext(Dispatchers.IO) {
+        if (!forcedImdbId.isNullOrBlank() && !forcedType.isNullOrBlank()) {
+            val (meta, eps) = fetchCinemetaDetails(forcedType, forcedImdbId)
             return@withContext if (meta != null) MatchResult.ConfidentMatch(meta, eps) else MatchResult.NoMatch
         }
 
-        val searchList = searchTmdb(rawTitle)
+        val clean = FilenameSanitizer.parse(rawTitle).cleanTitle
+        val searchList = searchMetadata(clean)
         if (searchList.isEmpty()) return@withContext MatchResult.NoMatch
 
-        val cleanQuery = FilenameSanitizer.parse(rawTitle).cleanTitle.lowercase().replace(Regex("[^a-z0-9]"), "")
+        val cleanQuery = clean.lowercase().replace(Regex("[^a-z0-9]"), "")
         val top = searchList.first()
         val candidateTitle = top.title.lowercase().replace(Regex("[^a-z0-9]"), "")
         val similarity = calculateSimilarity(cleanQuery, candidateTitle)
 
-        // If multiple search hits exist and the top is not an exact/near-exact match (>=90%), flag as Ambiguous
-        if (searchList.size > 1 && similarity < 0.90) {
-            return@withContext MatchResult.Ambiguous(rawTitle, searchList.take(6))
+        if (searchList.size > 1 && similarity < 0.85) {
+            return@withContext MatchResult.Ambiguous(clean, searchList)
         }
 
-        val (meta, eps) = if (top.mediaType == "tv") fetchTvDetails(top.id) else fetchMovieDetails(top.id)
-        if (meta != null) MatchResult.ConfidentMatch(meta, eps) else MatchResult.NoMatch
+        // Fetch detailed meta from Cinemeta
+        val imdbPrefix = if (top.id > 100000) String.format("tt%07d", top.id) else "tt" + top.id.toString()
+        val (meta, eps) = fetchCinemetaDetails(top.mediaType, imdbPrefix)
+        if (meta != null) {
+            MatchResult.ConfidentMatch(meta, eps)
+        } else {
+            // Direct Cinemeta search fallback
+            val fallback = fetchDirectCinemeta(clean)
+            if (fallback != null) MatchResult.ConfidentMatch(fallback.first, fallback.second) else MatchResult.NoMatch
+        }
+    }
+
+    private fun fetchDirectCinemeta(cleanTitle: String): Pair<MediaMetadata, Map<String, ScrapedEpisode>>? {
+        val encoded = URLEncoder.encode(cleanTitle, "UTF-8")
+        for (type in listOf("series", "movie")) {
+            try {
+                val url = "https://v3-cinemeta.strem.io/catalog/$type/top/search=$encoded.json"
+                val resp = client.newCall(Request.Builder().url(url).build()).execute()
+                val body = resp.body?.string() ?: continue
+                val metas = json.parseToJsonElement(body).jsonObject["metas"]?.jsonArray ?: continue
+                if (metas.isEmpty()) continue
+                val topId = metas[0].jsonObject["id"]?.jsonPrimitive?.contentOrNull ?: continue
+                val details = fetchCinemetaDetails(type, topId)
+                if (details.first != null) return Pair(details.first!!, details.second)
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    private fun fetchCinemetaDetails(type: String, imdbId: String): Pair<MediaMetadata?, Map<String, ScrapedEpisode>> {
+        return try {
+            val streamType = if (type == "tv" || type == "series") "series" else "movie"
+            val url = "https://v3-cinemeta.strem.io/meta/$streamType/$imdbId.json"
+            val resp = client.newCall(Request.Builder().url(url).build()).execute()
+            val body = resp.body?.string() ?: return Pair(null, emptyMap())
+            val metaObj = json.parseToJsonElement(body).jsonObject["meta"]?.jsonObject ?: return Pair(null, emptyMap())
+
+            val title = metaObj["name"]?.jsonPrimitive?.contentOrNull ?: ""
+            val poster = metaObj["poster"]?.jsonPrimitive?.contentOrNull
+            val backdrop = metaObj["background"]?.jsonPrimitive?.contentOrNull ?: poster
+            val year = metaObj["year"]?.jsonPrimitive?.contentOrNull
+            val genres = metaObj["genres"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: listOf(if (streamType == "series") "TV Series" else "Movie")
+
+            val meta = MediaMetadata(title, poster, backdrop, year, genres)
+            val episodesMap = mutableMapOf<String, ScrapedEpisode>()
+
+            val videos = metaObj["videos"]?.jsonArray ?: JsonArray(emptyList())
+            for (v in videos) {
+                val vObj = v.jsonObject
+                val s = vObj["season"]?.jsonPrimitive?.intOrNull ?: 1
+                val ep = vObj["episode"]?.jsonPrimitive?.intOrNull ?: 1
+                val epTitle = vObj["title"]?.jsonPrimitive?.contentOrNull ?: "Episode $ep"
+                val epThumb = vObj["thumbnail"]?.jsonPrimitive?.contentOrNull ?: backdrop
+                episodesMap["S${s}E${ep}"] = ScrapedEpisode(s, ep, epTitle, "", epThumb)
+            }
+
+            Pair(meta, episodesMap)
+        } catch (_: Exception) {
+            Pair(null, emptyMap())
+        }
     }
 
     private fun calculateSimilarity(s1: String, s2: String): Double {
@@ -112,77 +180,5 @@ class MetadataScraper(
             }
         }
         return dp[s1.length][s2.length]
-    }
-
-    private fun fetchTvDetails(tvId: Int): Pair<MediaMetadata?, Map<String, ScrapedEpisode>> {
-        return try {
-            val url = "https://api.themoviedb.org/3/tv/$tvId?api_key=$apiKey"
-            val req = Request.Builder().url(url).header("User-Agent", "VidLab/1.0 (Android)").build()
-            val resp = client.newCall(req).execute()
-            val body = resp.body?.string() ?: return Pair(null, emptyMap())
-            val obj = json.parseToJsonElement(body).jsonObject
-
-            val title = obj["name"]?.jsonPrimitive?.contentOrNull ?: obj["original_name"]?.jsonPrimitive?.content ?: ""
-            val posterPath = obj["poster_path"]?.jsonPrimitive?.contentOrNull
-            val backdropPath = obj["backdrop_path"]?.jsonPrimitive?.contentOrNull
-            val date = obj["first_air_date"]?.jsonPrimitive?.contentOrNull ?: ""
-            val year = if (date.length >= 4) date.take(4) else null
-
-            val poster = if (posterPath != null) "https://image.tmdb.org/t/p/w500$posterPath" else null
-            val backdrop = if (backdropPath != null) "https://image.tmdb.org/t/p/w1280$backdropPath" else poster
-            val genres = obj["genres"]?.jsonArray?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull } ?: listOf("TV Series")
-
-            val meta = MediaMetadata(title, poster, backdrop, year, genres)
-            val episodesMap = mutableMapOf<String, ScrapedEpisode>()
-
-            val numSeasons = obj["number_of_seasons"]?.jsonPrimitive?.intOrNull ?: 10
-            for (s in 1..minOf(numSeasons, 20)) {
-                try {
-                    val sUrl = "https://api.themoviedb.org/3/tv/$tvId/season/$s?api_key=$apiKey"
-                    val sReq = Request.Builder().url(sUrl).header("User-Agent", "VidLab/1.0 (Android)").build()
-                    val sResp = client.newCall(sReq).execute()
-                    if (!sResp.isSuccessful) continue
-                    val sBody = sResp.body?.string() ?: continue
-                    val sObj = json.parseToJsonElement(sBody).jsonObject
-                    val eps = sObj["episodes"]?.jsonArray ?: continue
-
-                    for (epElem in eps) {
-                        val epObj = epElem.jsonObject
-                        val epNum = epObj["episode_number"]?.jsonPrimitive?.intOrNull ?: continue
-                        val epName = epObj["name"]?.jsonPrimitive?.contentOrNull ?: "Episode $epNum"
-                        val still = epObj["still_path"]?.jsonPrimitive?.contentOrNull
-                        val thumb = if (still != null) "https://image.tmdb.org/t/p/w500$still" else backdrop
-                        episodesMap["S${s}E${epNum}"] = ScrapedEpisode(s, epNum, epName, "", thumb)
-                    }
-                } catch (_: Exception) {}
-            }
-            Pair(meta, episodesMap)
-        } catch (_: Exception) {
-            Pair(null, emptyMap())
-        }
-    }
-
-    private fun fetchMovieDetails(movieId: Int): Pair<MediaMetadata?, Map<String, ScrapedEpisode>> {
-        return try {
-            val url = "https://api.themoviedb.org/3/movie/$movieId?api_key=$apiKey"
-            val req = Request.Builder().url(url).header("User-Agent", "VidLab/1.0 (Android)").build()
-            val resp = client.newCall(req).execute()
-            val body = resp.body?.string() ?: return Pair(null, emptyMap())
-            val obj = json.parseToJsonElement(body).jsonObject
-
-            val title = obj["title"]?.jsonPrimitive?.contentOrNull ?: ""
-            val posterPath = obj["poster_path"]?.jsonPrimitive?.contentOrNull
-            val backdropPath = obj["backdrop_path"]?.jsonPrimitive?.contentOrNull
-            val date = obj["release_date"]?.jsonPrimitive?.contentOrNull ?: ""
-            val year = if (date.length >= 4) date.take(4) else null
-
-            val poster = if (posterPath != null) "https://image.tmdb.org/t/p/w500$posterPath" else null
-            val backdrop = if (backdropPath != null) "https://image.tmdb.org/t/p/w1280$backdropPath" else poster
-            val genres = obj["genres"]?.jsonArray?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull } ?: listOf("Movie")
-
-            Pair(MediaMetadata(title, poster, backdrop, year, genres), emptyMap())
-        } catch (_: Exception) {
-            Pair(null, emptyMap())
-        }
     }
 }

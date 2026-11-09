@@ -43,6 +43,8 @@ class MainActivity : ComponentActivity() {
             val errorMessage by viewModel.feedError.collectAsState()
             val explorerFiles by viewModel.explorerFiles.collectAsState()
             val searchResults by viewModel.searchResults.collectAsState()
+            val renamePlan by viewModel.renamePlan.collectAsState()
+            val isRenaming by viewModel.isRenaming.collectAsState()
 
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var showSourceSheet by remember { mutableStateOf(false) }
@@ -93,7 +95,10 @@ class MainActivity : ComponentActivity() {
                             onPlayFile = { file -> launchPlayer(file) },
                             onRematch = { item ->
                                 itemToRematch = item
-                                viewModel.searchTmdb(item.title)
+                                viewModel.searchMetadata(item.title)
+                            },
+                            onRenamePermanently = { item ->
+                                viewModel.prepareRenamePlan(item)
                             }
                         )
                     } else {
@@ -106,7 +111,7 @@ class MainActivity : ComponentActivity() {
                             onSelectItem = { item -> selectedItem = item },
                             onRematchItem = { item ->
                                 itemToRematch = item
-                                viewModel.searchTmdb(item.title)
+                                viewModel.searchMetadata(item.title)
                             }
                         )
                     }
@@ -115,7 +120,7 @@ class MainActivity : ComponentActivity() {
                         AmbiguousMatchDialog(
                             prompt = activeAmbiguousPrompt!!,
                             onSelectMatch = { cand ->
-                                viewModel.applyManualRematch(activeAmbiguousPrompt!!.mediaKey, cand.id, cand.mediaType)
+                                viewModel.applyManualRematch(activeAmbiguousPrompt!!.mediaKey, String.format("tt%07d", cand.id), cand.mediaType)
                                 activeAmbiguousPrompt = null
                             },
                             onDismiss = { activeAmbiguousPrompt = null }
@@ -127,9 +132,9 @@ class MainActivity : ComponentActivity() {
                             item = itemToRematch!!,
                             searchResults = searchResults,
                             initialQuery = itemToRematch!!.title,
-                            onSearch = { query -> viewModel.searchTmdb(query) },
+                            onSearch = { query -> viewModel.searchMetadata(query) },
                             onSelectMatch = { result ->
-                                viewModel.applyManualRematch(itemToRematch!!.id, result.id, result.mediaType)
+                                viewModel.applyManualRematch(itemToRematch!!.id, String.format("tt%07d", result.id), result.mediaType)
                                 itemToRematch = null
                                 selectedItem = null
                                 viewModel.clearSearchResults()
@@ -138,6 +143,20 @@ class MainActivity : ComponentActivity() {
                                 itemToRematch = null
                                 viewModel.clearSearchResults()
                             }
+                        )
+                    }
+
+                    // Permanent Rename Preview Modal
+                    if (renamePlan != null) {
+                        RenamePreviewBottomSheet(
+                            operations = renamePlan!!,
+                            isRenaming = isRenaming,
+                            onConfirm = {
+                                viewModel.executeRename {
+                                    selectedItem = null
+                                }
+                            },
+                            onDismiss = { viewModel.dismissRenamePlan() }
                         )
                     }
 
