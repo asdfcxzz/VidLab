@@ -4,10 +4,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,6 +21,7 @@ fun VidLabDrawerContent(
     simklConnected: Boolean,
     onSimklToggle: (Boolean) -> Unit,
     onRescanClick: () -> Unit,
+    onRunRenamerClick: () -> Unit,
     onBrowseStorageClick: () -> Unit
 ) {
     ModalDrawerSheet(
@@ -28,7 +30,7 @@ fun VidLabDrawerContent(
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
             Text("VidLab", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text("Media Center", color = Color(0xFF9E95B8), fontSize = 12.sp)
+            Text("Media Center & Storage Renamer", color = Color(0xFF9E95B8), fontSize = 12.sp)
 
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider(color = Color(0xFF26203B))
@@ -71,12 +73,24 @@ fun VidLabDrawerContent(
             Spacer(modifier = Modifier.height(20.dp))
 
             NavigationDrawerItem(
-                label = { Text("Rescan WebDAV Library", color = Color.White) },
+                label = { Text("Rescan Library Catalog", color = Color.White) },
                 icon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White) },
                 selected = false,
                 onClick = onRescanClick,
                 colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            NavigationDrawerItem(
+                label = { Text("Run Storage Auto-Renamer", color = Color(0xFF8B5CF6), fontWeight = FontWeight.SemiBold) },
+                icon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF8B5CF6)) },
+                selected = false,
+                onClick = onRunRenamerClick,
+                colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color(0xFF1B162B))
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             NavigationDrawerItem(
                 label = { Text("Browse File Storage", color = Color.White) },

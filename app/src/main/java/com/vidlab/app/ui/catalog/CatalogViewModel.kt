@@ -11,6 +11,17 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class RenameProgressState(
+    val isRunning: Boolean = false,
+    val currentStep: String = "Idle",
+    val processedCount: Int = 0,
+    val totalCount: Int = 0,
+    val currentFile: String = "",
+    val logs: List<String> = emptyList(),
+    val isCompleted: Boolean = false,
+    val error: String? = null
+)
+
 class CatalogViewModel(application: Application) : AndroidViewModel(application) {
 
     val repository = MediaCatalogRepository(application)
@@ -24,27 +35,19 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
     private val _feedError = MutableStateFlow<String?>(null)
     val feedError: StateFlow<String?> = _feedError.asStateFlow()
 
-    private val _explorerFiles = MutableStateFlow<List<MediaFile>>(emptyList())
-    val explorerFiles: StateFlow<List<MediaFile>> = _explorerFiles.asStateFlow()
+    private val _progressState = MutableStateFlow(RenameProgressState())
+    val progressState: StateFlow<RenameProgressState> = _progressState.asStateFlow()
 
-    private val _searchResults = MutableStateFlow<List<TmdbSearchResult>>(emptyList())
-    val searchResults: StateFlow<List<TmdbSearchResult>> = _searchResults.asStateFlow()
+    private val _singleRenamePlan = MutableStateFlow<List<RenameOperation>?>(null)
+    val singleRenamePlan: StateFlow<List<RenameOperation>?> = _singleRenamePlan.asStateFlow()
 
-    private val _renamePlan = MutableStateFlow<List<RenameOperation>?>(null)
-    val renamePlan: StateFlow<List<RenameOperation>?> = _renamePlan.asStateFlow()
-
-    private val _isRenaming = MutableStateFlow(false)
-    val isRenaming: StateFlow<Boolean> = _isRenaming.asStateFlow()
+    private val _isSingleRenaming = MutableStateFlow(false)
+    val isSingleRenaming: StateFlow<Boolean> = _isSingleRenaming.asStateFlow()
 
     val ambiguousPrompts: SharedFlow<AmbiguousPrompt> = repository.ambiguousMatchesFlow
 
     init {
-        val cached = repository.getCachedFeed()
-        if (cached != null) {
-            _feedSections.value = cached
-        } else {
-            loadMediaCenter()
-        }
+        loadMediaCenter()
     }
 
     fun loadMediaCenter() {
@@ -62,62 +65,125 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun searchMetadata(query: String) {
-        viewModelScope.launch {
-            _searchResults.value = repository.scraper.searchMetadata(query)
+    // Prepare rename plan for a specific library item (e.g. Animals, My Hero Academia S7)
+    fun prepareSingleItemRename(item: ScrapedMediaItem) {
+        _singleRenamePlan.value = repository.generateRenamePlan(item)
+    }
+
+    fun dismissSingleRenamePlan() {
+        _singleRenamePlan.value = null
+    }
+
+    fun executeSingleItemRename(onSuccess: () -> Unit) {
+        val ops = _singleRenamePlan.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSingleRenaming.value = true
+            val app = getApplication<Application>()
+            var failed = 0
+            for (op in ops) {
+                val res = repository.webDavClient.moveFile(op.oldPath, op.newPath)
+                if (res.isFailure) failed++
+            }
+            _isSingleRenaming.value = false
+            _singleRenamePlan.value = null
+
+            withContext(Dispatchers.Main) {
+                if (failed == 0) {
+                    Toast.makeText(app, "Successfully restructured and renamed!", Toast.LENGTH_SHORT).show()
+                    onSuccess()
+                } else {
+                    Toast.makeText(app, "$failed file(s) failed to rename", Toast.LENGTH_LONG).show()
+                }
+            }
+            loadMediaCenter()
         }
     }
 
-    fun clearSearchResults() {
-        _searchResults.value = emptyList()
+    fun triggerLibraryBatchRename() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _progressState.update {
+                it.copy(
+                    isRunning = true,
+                    currentStep = "Scanning storage for unstructured media...",
+                    logs = listOf("Starting WebDAV crawl..."),
+                    isCompleted = false,
+                    error = null
+                )
+            }
+
+            val feedResult = repository.buildMediaCenterFeed()
+            if (feedResult.isFailure) {
+                val err = feedResult.exceptionOrNull()?.localizedMessage ?: "Scan failed"
+                _progressState.update { it.copy(isRunning = false, error = err) }
+                return@launch
+            }
+
+            val sections = feedResult.getOrDefault(emptyList())
+            val allItems = sections.flatMap { it.items }
+            val allOps = mutableListOf<RenameOperation>()
+
+            for (item in allItems) {
+                allOps.addAll(repository.generateRenamePlan(item))
+            }
+
+            if (allOps.isEmpty()) {
+                _progressState.update {
+                    it.copy(
+                        isRunning = false,
+                        isCompleted = true,
+                        currentStep = "All files are already organized in .mkv format.",
+                        logs = it.logs + "No pending rename operations."
+                    )
+                }
+                return@launch
+            }
+
+            _progressState.update {
+                it.copy(
+                    totalCount = allOps.size,
+                    currentStep = "Renaming & restructuring files..."
+                )
+            }
+
+            var completed = 0
+            for (op in allOps) {
+                _progressState.update {
+                    it.copy(
+                        currentFile = "${op.fileName} ➔${op.newFileName}",
+                        processedCount = completed
+                    )
+                }
+
+                val moveResult = repository.webDavClient.moveFile(op.oldPath, op.newPath)
+                val logEntry = if (moveResult.isSuccess) {
+                    "✓ Moved: ${op.fileName} ->${op.newPath}"
+                } else {
+                    "✗ Failed: ${op.fileName} (${moveResult.exceptionOrNull()?.localizedMessage})"
+                }
+
+                completed++
+                _progressState.update {
+                    it.copy(
+                        processedCount = completed,
+                        logs = (listOf(logEntry) + it.logs).take(100)
+                    )
+                }
+            }
+
+            _progressState.update {
+                it.copy(
+                    isRunning = false,
+                    isCompleted = true,
+                    currentStep = "Done! Successfully structured $completed file(s)."
+                )
+            }
+
+            loadMediaCenter()
+        }
     }
 
     fun applyManualRematch(mediaKey: String, id: String, mediaType: String) {
         repository.saveManualBinding(mediaKey, id, mediaType)
         loadMediaCenter()
-    }
-
-    fun prepareRenamePlan(item: ScrapedMediaItem) {
-        _renamePlan.value = repository.generateRenamePlan(item)
-    }
-
-    fun dismissRenamePlan() {
-        _renamePlan.value = null
-    }
-
-    fun executeRename(onSuccess: () -> Unit) {
-        val plan = _renamePlan.value ?: return
-        viewModelScope.launch {
-            _isRenaming.value = true
-            val app = getApplication<Application>()
-            repository.executeBatchRename(plan).onSuccess {
-                _isRenaming.value = false
-                _renamePlan.value = null
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(app, "Renamed successfully on storage", Toast.LENGTH_SHORT).show()
-                    onSuccess()
-                }
-                loadMediaCenter()
-            }.onFailure { err ->
-                _isRenaming.value = false
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(app, "Rename failed: ${err.localizedMessage}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    fun openExplorerPath(path: String) {
-        viewModelScope.launch {
-            repository.getRawDirectory(path).onSuccess {
-                _explorerFiles.value = it
-            }
-        }
-    }
-
-    fun navigateExplorerTo(file: MediaFile) {
-        if (file.isDirectory) {
-            openExplorerPath(file.path)
-        }
     }
 }

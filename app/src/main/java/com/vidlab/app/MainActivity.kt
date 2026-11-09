@@ -41,14 +41,13 @@ class MainActivity : ComponentActivity() {
             val sections by viewModel.feedSections.collectAsState()
             val isLoading by viewModel.isFeedLoading.collectAsState()
             val errorMessage by viewModel.feedError.collectAsState()
-            val explorerFiles by viewModel.explorerFiles.collectAsState()
-            val searchResults by viewModel.searchResults.collectAsState()
-            val renamePlan by viewModel.renamePlan.collectAsState()
-            val isRenaming by viewModel.isRenaming.collectAsState()
+            val progressState by viewModel.progressState.collectAsState()
+            val singleRenamePlan by viewModel.singleRenamePlan.collectAsState()
+            val isSingleRenaming by viewModel.isSingleRenaming.collectAsState()
 
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
+            var showRenamerModal by remember { mutableStateOf(false) }
             var showSourceSheet by remember { mutableStateOf(false) }
-            var itemToRematch by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var activeAmbiguousPrompt by remember { mutableStateOf<AmbiguousPrompt?>(null) }
 
             val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -61,12 +60,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BackHandler(enabled = drawerState.isOpen || selectedItem != null) {
-                if (drawerState.isOpen) {
-                    coroutineScope.launch { drawerState.close() }
-                } else {
-                    selectedItem = null
-                }
+            BackHandler(enabled = drawerState.isOpen || selectedItem != null || showRenamerModal || singleRenamePlan != null || showSourceSheet) {
+                if (drawerState.isOpen) coroutineScope.launch { drawerState.close() }
+                else if (singleRenamePlan != null) viewModel.dismissSingleRenamePlan()
+                else if (showRenamerModal) showRenamerModal = false
+                else if (showSourceSheet) showSourceSheet = false
+                else selectedItem = null
             }
 
             ModalNavigationDrawer(
@@ -79,9 +78,13 @@ class MainActivity : ComponentActivity() {
                             coroutineScope.launch { drawerState.close() }
                             viewModel.loadMediaCenter()
                         },
+                        onRunRenamerClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showRenamerModal = true
+                            viewModel.triggerLibraryBatchRename()
+                        },
                         onBrowseStorageClick = {
                             coroutineScope.launch { drawerState.close() }
-                            viewModel.openExplorerPath("/")
                             showSourceSheet = true
                         }
                     )
@@ -93,12 +96,9 @@ class MainActivity : ComponentActivity() {
                             item = selectedItem!!,
                             onBack = { selectedItem = null },
                             onPlayFile = { file -> launchPlayer(file) },
-                            onRematch = { item ->
-                                itemToRematch = item
-                                viewModel.searchMetadata(item.title)
-                            },
+                            onRematch = {},
                             onRenamePermanently = { item ->
-                                viewModel.prepareRenamePlan(item)
+                                viewModel.prepareSingleItemRename(item)
                             }
                         )
                     } else {
@@ -109,92 +109,51 @@ class MainActivity : ComponentActivity() {
                             onOpenDrawer = { coroutineScope.launch { drawerState.open() } },
                             onRescan = { viewModel.loadMediaCenter() },
                             onSelectItem = { item -> selectedItem = item },
-                            onRematchItem = { item ->
-                                itemToRematch = item
-                                viewModel.searchMetadata(item.title)
-                            }
+                            onRematchItem = {}
                         )
                     }
 
+                    // Specific Item Rename Preview Bottom Sheet
+                    if (singleRenamePlan != null) {
+                        RenamePreviewBottomSheet(
+                            operations = singleRenamePlan!!,
+                            isRenaming = isSingleRenaming,
+                            onConfirm = {
+                                viewModel.executeSingleItemRename {
+                                    selectedItem = null
+                                }
+                            },
+                            onDismiss = { viewModel.dismissSingleRenamePlan() }
+                        )
+                    }
+
+                    // Batch Renamer Drawer Bottom Sheet
+                    if (showRenamerModal) {
+                        ModalBottomSheet(
+                            onDismissRequest = { if (!progressState.isRunning) showRenamerModal = false },
+                            containerColor = Color(0xFF141120)
+                        ) {
+                            AutoRenameScreen(
+                                state = progressState,
+                                onRestart = { viewModel.triggerLibraryBatchRename() }
+                            )
+                        }
+                    }
+
+                    // Ambiguous Match Manual Selector Dialog
                     if (activeAmbiguousPrompt != null) {
                         AmbiguousMatchDialog(
                             prompt = activeAmbiguousPrompt!!,
                             onSelectMatch = { cand ->
-                                viewModel.applyManualRematch(activeAmbiguousPrompt!!.mediaKey, String.format("tt%07d", cand.id), cand.mediaType)
+                                viewModel.applyManualRematch(
+                                    activeAmbiguousPrompt!!.mediaKey,
+                                    cand.id.toString(),
+                                    cand.mediaType
+                                )
                                 activeAmbiguousPrompt = null
                             },
                             onDismiss = { activeAmbiguousPrompt = null }
                         )
-                    }
-
-                    if (itemToRematch != null) {
-                        FixMatchBottomSheet(
-                            item = itemToRematch!!,
-                            searchResults = searchResults,
-                            initialQuery = itemToRematch!!.title,
-                            onSearch = { query -> viewModel.searchMetadata(query) },
-                            onSelectMatch = { result ->
-                                viewModel.applyManualRematch(itemToRematch!!.id, String.format("tt%07d", result.id), result.mediaType)
-                                itemToRematch = null
-                                selectedItem = null
-                                viewModel.clearSearchResults()
-                            },
-                            onDismiss = {
-                                itemToRematch = null
-                                viewModel.clearSearchResults()
-                            }
-                        )
-                    }
-
-                    // Permanent Rename Preview Modal
-                    if (renamePlan != null) {
-                        RenamePreviewBottomSheet(
-                            operations = renamePlan!!,
-                            isRenaming = isRenaming,
-                            onConfirm = {
-                                viewModel.executeRename {
-                                    selectedItem = null
-                                }
-                            },
-                            onDismiss = { viewModel.dismissRenamePlan() }
-                        )
-                    }
-
-                    if (showSourceSheet) {
-                        ModalBottomSheet(
-                            onDismissRequest = { showSourceSheet = false },
-                            containerColor = Color(0xFF141120)
-                        ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                                Text("File Source Explorer", color = Color.White, fontSize = 18.sp)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                LazyColumn(modifier = Modifier.heightIn(max = 450.dp)) {
-                                    items(explorerFiles) { file ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    if (file.isDirectory) viewModel.navigateExplorerTo(file)
-                                                    else {
-                                                        launchPlayer(file)
-                                                        showSourceSheet = false
-                                                    }
-                                                }
-                                                .padding(vertical = 12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = if (file.isDirectory) Icons.Default.Folder else Icons.Default.PlayArrow,
-                                                contentDescription = null,
-                                                tint = if (file.isDirectory) Color(0xFFFFB300) else Color.White
-                                            )
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Text(file.name, color = Color.White, fontSize = 14.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }

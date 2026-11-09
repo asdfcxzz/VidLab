@@ -7,6 +7,7 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import org.w3c.dom.Element
 import java.io.ByteArrayInputStream
+import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
@@ -22,8 +23,9 @@ class WebDavClient(
 
     suspend fun listDirectory(path: String): Result<List<MediaFile>> = withContext(Dispatchers.IO) {
         runCatching {
-            val normalizedPath = if (path.startsWith("/")) path else "/$path"
-            val fullUrl = "$baseUrl${encodePath(normalizedPath)}"
+            val normalizedPath = "/" + path.trim('/')
+            val encodedPath = encodePath(normalizedPath)
+            val fullUrl = if (encodedPath == "/" || encodedPath.isEmpty()) "$baseUrl/" else "$baseUrl$encodedPath/"
 
             val propfindXml = """
                 <?xml version="1.0" encoding="utf-8" ?>
@@ -51,10 +53,33 @@ class WebDavClient(
         }
     }
 
+    suspend fun makeDirectory(dirPath: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalized = "/" + dirPath.trim('/')
+            val segments = normalized.split('/').filter { it.isNotBlank() }
+            var current = ""
+
+            for (seg in segments) {
+                current += "/$seg"
+                val url = "$baseUrl${encodePath(current)}"
+                val request = Request.Builder().url(url).method("MKCOL", null).build()
+                val resp = client.newCall(request).execute()
+                resp.close()
+            }
+            Unit
+        }
+    }
+
     suspend fun moveFile(sourcePath: String, destPath: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val srcNormalized = if (sourcePath.startsWith("/")) sourcePath else "/$sourcePath"
-            val dstNormalized = if (destPath.startsWith("/")) destPath else "/$destPath"
+            val srcNormalized = "/" + sourcePath.trim('/')
+            val dstNormalized = "/" + destPath.trim('/')
+
+            // Ensure destination directory is created
+            val destFolder = dstNormalized.substringBeforeLast('/')
+            if (destFolder.isNotBlank() && destFolder != "/") {
+                makeDirectory(destFolder)
+            }
 
             val srcUrl = "$baseUrl${encodePath(srcNormalized)}"
             val dstUrl = "$baseUrl${encodePath(dstNormalized)}"
@@ -73,7 +98,7 @@ class WebDavClient(
             resp.close()
 
             if (code !in 200..299) {
-                throw Exception("WebDAV MOVE failed (HTTP $code $msg): $errBody")
+                throw Exception("HTTP $code $msg:$errBody")
             }
             Unit
         }
@@ -98,8 +123,16 @@ class WebDavClient(
             val respElem = responses.item(i) as? Element ?: continue
             val hrefNode = respElem.getElementsByTagNameNS("*", "href").item(0) ?: continue
             val rawHref = hrefNode.textContent.trim()
-            val decodedHref = URLDecoder.decode(rawHref, "UTF-8")
 
+            // Extract relative path even if href is full URL
+            val pathOnly = try {
+                val parsedUri = URI(rawHref)
+                parsedUri.path ?: rawHref
+            } catch (_: Exception) {
+                rawHref
+            }
+
+            val decodedHref = URLDecoder.decode(pathOnly, "UTF-8")
             val propstat = respElem.getElementsByTagNameNS("*", "propstat").item(0) as? Element
             val prop = propstat?.getElementsByTagNameNS("*", "prop")?.item(0) as? Element
 
@@ -109,10 +142,10 @@ class WebDavClient(
 
             val contentLength = prop?.getElementsByTagNameNS("*", "getcontentlength")?.item(0)?.textContent?.toLongOrNull() ?: 0L
 
-            val pathTrimmed = decodedHref.trimEnd('/')
-            val reqTrimmed = requestedPath.trimEnd('/')
+            val pathTrimmed = "/" + decodedHref.trim('/')
+            val reqTrimmed = "/" + requestedPath.trim('/')
 
-            if (pathTrimmed.equals(reqTrimmed, ignoreCase = true) || pathTrimmed.isEmpty()) {
+            if (pathTrimmed.equals(reqTrimmed, ignoreCase = true) || pathTrimmed == "/") {
                 continue
             }
 
@@ -123,7 +156,7 @@ class WebDavClient(
             files.add(
                 MediaFile(
                     name = name,
-                    path = decodedHref,
+                    path = pathTrimmed,
                     isDirectory = isDirectory,
                     size = contentLength,
                     isVideo = isVideo
