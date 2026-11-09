@@ -1,12 +1,15 @@
 package com.vidlab.app.ui.catalog
 
 import android.app.Application
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vidlab.app.data.model.*
 import com.vidlab.app.data.remote.MediaCatalogRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CatalogViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -86,14 +89,20 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         val plan = _renamePlan.value ?: return
         viewModelScope.launch {
             _isRenaming.value = true
+            val app = getApplication<Application>()
             repository.executeBatchRename(plan).onSuccess {
                 _isRenaming.value = false
                 _renamePlan.value = null
-                onSuccess()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(app, "Renamed successfully on storage", Toast.LENGTH_SHORT).show()
+                    onSuccess()
+                }
                 loadMediaCenter()
             }.onFailure { err ->
                 _isRenaming.value = false
-                _feedError.value = "Rename error: ${err.localizedMessage}"
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(app, "Rename failed: ${err.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

@@ -18,7 +18,7 @@ class MediaCatalogRepository(
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
-    private val cacheFile = File(context.filesDir, "catalog_cache_v13.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v15.json")
     private val manualBindingsFile = File(context.filesDir, "manual_bindings.json")
 
     private val _ambiguousMatchesFlow = MutableSharedFlow<AmbiguousPrompt>(replay = 5)
@@ -35,9 +35,9 @@ class MediaCatalogRepository(
         }
     }
 
-    fun saveManualBinding(mediaKey: String, imdbId: String, mediaType: String) {
+    fun saveManualBinding(mediaKey: String, tmdbId: String, mediaType: String) {
         val bindings = getManualBindings()
-        bindings[mediaKey] = "$imdbId:$mediaType"
+        bindings[mediaKey] = "$tmdbId:$mediaType"
         manualBindingsFile.writeText(json.encodeToString(bindings))
         cacheFile.delete()
     }
@@ -64,12 +64,13 @@ class MediaCatalogRepository(
 
             while (queue.isNotEmpty()) {
                 val currentPath = queue.removeFirst()
-                if (currentPath in visited) continue
-                visited.add(currentPath)
+                val normalized = currentPath.trimEnd('/')
+                if (normalized in visited) continue
+                visited.add(normalized)
 
                 val entries = webDavClient.listDirectory(currentPath).getOrDefault(emptyList())
                 for (entry in entries) {
-                    val decodedEntryPath = URLDecoder.decode(entry.path, "UTF-8")
+                    val decodedEntryPath = URLDecoder.decode(entry.path, "UTF-8").trimEnd('/')
                     if (entry.isDirectory) {
                         if (entry.path !in visited && decodedEntryPath !in visited) {
                             queue.add(entry.path)
@@ -297,40 +298,39 @@ class MediaCatalogRepository(
         (seriesDeferred + movieDeferred).awaitAll()
     }
 
-    // Generate Permanent Rename Plan (Series restructuring vs Movies in-place)
+    // Universal in-place rename: Keeps files in their EXACT existing folder, outputs .mkv
     fun generateRenamePlan(item: ScrapedMediaItem): List<RenameOperation> {
         val plan = mutableListOf<RenameOperation>()
         val cleanShowOrMovieTitle = sanitizeFsName(item.title)
 
         if (item.isSeries) {
             for (season in item.seasons) {
-                val seasonFolder = String.format("Season %02d", season.seasonNumber)
                 for (ep in season.episodes) {
-                    val ext = ep.file.name.substringAfterLast('.', "mkv")
+                    val decodedOldPath = URLDecoder.decode(ep.file.path, "UTF-8")
+                    val parentDir = decodedOldPath.substringBeforeLast('/')
                     val epTitleClean = ep.title.substringAfter("•").trim().let { sanitizeFsName(it) }
-                    val newFileName = String.format("%s - S%02dE%02d - %s.%s", cleanShowOrMovieTitle, season.seasonNumber, ep.episodeNumber, epTitleClean, ext)
-                    
-                    // Root parent directory of the original show
-                    val oldParts = URLDecoder.decode(ep.file.path, "UTF-8").trim('/').split('/')
-                    val rootDir = if (oldParts.size > 2) "/" + oldParts.first() else ""
-                    val newFullPath = "$rootDir/$cleanShowOrMovieTitle/$seasonFolder/$newFileName"
 
-                    if (ep.file.path != newFullPath) {
-                        plan.add(RenameOperation(ep.file.path, newFullPath, ep.file.name, newFileName))
+                    val newFileName = if (epTitleClean.startsWith("Episode ", ignoreCase = true) || epTitleClean.isBlank()) {
+                        String.format("%s - S%02dE%02d.mkv", cleanShowOrMovieTitle, season.seasonNumber, ep.episodeNumber)
+                    } else {
+                        String.format("%s - S%02dE%02d - %s.mkv", cleanShowOrMovieTitle, season.seasonNumber, ep.episodeNumber, epTitleClean)
+                    }
+
+                    val newFullPath = "$parentDir/$newFileName"
+                    if (decodedOldPath != newFullPath) {
+                        plan.add(RenameOperation(decodedOldPath, newFullPath, ep.file.name, newFileName))
                     }
                 }
             }
         } else {
-            // Movies: Stay in their original parent directory, just rename in-place
             val decodedOldPath = URLDecoder.decode(item.primaryFile.path, "UTF-8")
             val parentDir = decodedOldPath.substringBeforeLast('/')
-            val ext = item.primaryFile.name.substringAfterLast('.', "mp4")
             val yearSuffix = if (!item.releaseYear.isNullOrBlank()) " (${item.releaseYear})" else ""
-            val newFileName = "$cleanShowOrMovieTitle$yearSuffix.$ext"
+            val newFileName = "$cleanShowOrMovieTitle$yearSuffix.mkv"
             val newFullPath = "$parentDir/$newFileName"
 
-            if (item.primaryFile.path != newFullPath) {
-                plan.add(RenameOperation(item.primaryFile.path, newFullPath, item.primaryFile.name, newFileName))
+            if (decodedOldPath != newFullPath) {
+                plan.add(RenameOperation(decodedOldPath, newFullPath, item.primaryFile.name, newFileName))
             }
         }
         return plan
@@ -341,7 +341,7 @@ class MediaCatalogRepository(
             for (op in operations) {
                 webDavClient.moveFile(op.oldPath, op.newPath).getOrThrow()
             }
-            cacheFile.delete() // invalidate cached library
+            cacheFile.delete()
             Unit
         }
     }
