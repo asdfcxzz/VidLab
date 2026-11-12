@@ -76,9 +76,14 @@ fun MediaDetailScreen(
         if (onOpenExternalPlayer != null) {
             onOpenExternalPlayer(file)
         } else {
+            val encodedPath = file.path.split("/").joinToString("/") { segment ->
+                if (segment.isEmpty()) "" else Uri.encode(segment)
+            }
+            val streamUri = if (file.path.startsWith("http")) Uri.parse(file.path) else Uri.parse("http://127.0.0.1:8080$encodedPath")
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(Uri.parse("http://127.0.0.1:8080${file.path}"), "video/*")
+                setDataAndType(streamUri, "video/*")
                 putExtra(Intent.EXTRA_TITLE, file.name)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             runCatching { context.startActivity(intent) }
         }
@@ -196,10 +201,6 @@ fun MediaDetailScreen(
                                 )
                             }
 
-                            val targetLabel = if (item.isSeries && nextEpisode != null) {
-                                "S%02dE%02d".format(nextEpisode.seasonNumber, nextEpisode.episodeNumber)
-                            } else if (item.isSeries) "Episode" else "Movie"
-
                             MaterialTheme(
                                 shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp))
                             ) {
@@ -212,18 +213,26 @@ fun MediaDetailScreen(
                             ) {
                                 DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp)) },
-                                    text = { Text("Mark $targetLabel as Watched", color = Color.White, fontSize = 13.sp) },
+                                    text = { Text(if (item.isSeries) "Mark Entire Series Watched" else "Mark Movie as Watched", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
-                                        progressStore.markWatched(primaryTargetFile.path, true)
+                                        if (item.isSeries && allEpisodes.isNotEmpty()) {
+                                            allEpisodes.forEach { progressStore.markWatched(it.file.path, true) }
+                                        } else {
+                                            progressStore.markWatched(item.primaryFile.path, true)
+                                        }
                                     }
                                 )
                                 DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
-                                    text = { Text("Reset $targetLabel Progress", color = Color.White, fontSize = 13.sp) },
+                                    text = { Text(if (item.isSeries) "Reset Series Progress" else "Reset Movie Progress", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
-                                        progressStore.markWatched(primaryTargetFile.path, false)
+                                        if (item.isSeries && allEpisodes.isNotEmpty()) {
+                                            allEpisodes.forEach { progressStore.markWatched(it.file.path, false) }
+                                        } else {
+                                            progressStore.markWatched(item.primaryFile.path, false)
+                                        }
                                     }
                                 )
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
@@ -244,14 +253,6 @@ fun MediaDetailScreen(
                                     }
                                 )
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
-                                DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
-                                    text = { Text("Open in External Player", color = Color.White, fontSize = 13.sp) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        launchExternal(primaryTargetFile)
-                                    }
-                                )
                                 DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Storage & File Info", color = Color.White, fontSize = 13.sp) },
