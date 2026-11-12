@@ -131,6 +131,7 @@ class PlayerActivity : ComponentActivity() {
                     player = player,
                     title = displayTitle,
                     filePath = rawPath,
+                    streamUrl = streamUrl,
                     onBack = { finish() }
                 )
             }
@@ -178,6 +179,7 @@ private fun ModernPlayerScreen(
     player: ExoPlayer,
     title: String,
     filePath: String = "",
+    streamUrl: String = "",
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -319,7 +321,7 @@ private fun ModernPlayerScreen(
 
     LaunchedEffect(title, duration) {
         if (playerPrefs.skipSegmentsEnabled && title.isNotBlank()) {
-            val fetched = SkipSegmentManager.fetchSegmentsForMedia(title, duration)
+            val fetched = SkipSegmentManager.fetchSegmentsForMedia(title, duration, streamUrl)
             if (fetched.isNotEmpty()) {
                 val existingChapters = skipSegments.filter { it.type == SegmentType.CHAPTER }
                 skipSegments = (fetched + existingChapters).sortedBy { it.startMs }
@@ -904,6 +906,13 @@ private fun ModernPlayerScreen(
                                     cornerRadius = corner
                                 )
 
+                                drawRoundRect(
+                                    color = Color(0xFF90CAF9),
+                                    topLeft = Offset(0f, topY),
+                                    size = androidx.compose.ui.geometry.Size(size.width * progressFraction, trackH),
+                                    cornerRadius = corner
+                                )
+
                                 if (playerPrefs.skipSegmentsEnabled && duration > 0L) {
                                     for (seg in skipSegments) {
                                         val sFrac = (seg.startMs.toFloat() / totalDur).coerceIn(0f, 1f)
@@ -929,13 +938,6 @@ private fun ModernPlayerScreen(
                                         }
                                     }
                                 }
-
-                                drawRoundRect(
-                                    color = Color(0xFF90CAF9),
-                                    topLeft = Offset(0f, topY),
-                                    size = androidx.compose.ui.geometry.Size(size.width * progressFraction, trackH),
-                                    cornerRadius = corner
-                                )
 
                                 val thumbW = 5.dp.toPx()
                                 val thumbH = 16.dp.toPx()
