@@ -75,6 +75,11 @@ class PlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         hideSystemBars()
 
         val rawPath = intent.getStringExtra("FILE_PATH") ?: ""
@@ -304,13 +309,18 @@ private fun ModernPlayerScreen(
             },
             update = { view ->
                 view.resizeMode = resizeModes[resizeModeIndex].first
-                view.videoSurfaceView?.let { s ->
-                    s.pivotX = s.width / 2f
-                    s.pivotY = s.height / 2f
-                    s.scaleX = customScale
-                    s.scaleY = customScale
-                    s.translationX = 0f
-                    s.translationY = 0f
+                view.clipChildren = false
+                view.clipToPadding = false
+                val contentFrame = view.videoSurfaceView?.parent as? android.view.ViewGroup
+                if (contentFrame != null) {
+                    contentFrame.clipChildren = false
+                    contentFrame.clipToPadding = false
+                    contentFrame.pivotX = contentFrame.width / 2f
+                    contentFrame.pivotY = contentFrame.height / 2f
+                    contentFrame.scaleX = customScale
+                    contentFrame.scaleY = customScale
+                    contentFrame.translationX = 0f
+                    contentFrame.translationY = 0f
                 }
                 view.subtitleView?.let { sub ->
                     val fgColor = when (playerPrefs.subtitleColorIndex) {
