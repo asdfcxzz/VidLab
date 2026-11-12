@@ -15,7 +15,7 @@ object FilenameSanitizer {
     private val bracketsPattern = Regex("""\[[^\]]*\]|\([^\)]*\)""", RegexOption.IGNORE_CASE)
     
     private val noisePattern = Regex(
-        """(?i)\b(1080p|720p|480p|2160p|4k|uhd|hdr|imax|web-?dl|webrip|bluray|bdrip|brrip|dvdrip|hdtv|x264|x265|hevc|avc|10bit|8bit|aac|ac3|eac3|dts(?:-hd)?|truehd|atmos|ddp?\s*5\.?1|dd\s*5\.?1|5\.1|7\.1|2\.0|multi|repack|proper|amzn|nf|hbo|cr|jbent|eztv|rarbg|psa|hin(?:di)?|tam(?:il)?|tel(?:ugu)?|kan(?:nada)?|eng(?:lish)?|jap(?:anese)?|org|line|esubs?|subs?|4khdhub|absenth?|absinth|hdhub4u|moviesdrives(?:\.bid)?|bid|tv|com|nano-lumix|lumix|yt|opus|tv\d{4}|movie\d{4})\b"""
+        """(?i)\b(1080p|720p|480p|2160p|4k|uhd|hdr|imax|web-?dl|webrip|bluray|bdrip|brrip|dvdrip|hdtv|x264|x265|hevc|avc|10bit|8bit|aac|ac3|eac3|dts(?:-hd)?|truehd|atmos|ddp?\s*5\.?1|dd\s*5\.?1|5\.1|7\.1|2\.0|multi|repack|proper|amzn|nf|hbo|cr|jbent|eztv|rarbg|psa|bone|hin(?:di)?|tam(?:il)?|tel(?:ugu)?|kan(?:nada)?|eng(?:lish)?|jap(?:anese)?|org|line|esubs?|subs?|4khdhub|absenth?|absinth|hdhub4u|moviesdrives(?:\.bid)?|bid|tv|com|nano-lumix|lumix|yt|opus|tv\d{4}|movie\d{4})\b"""
     )
     private val standardSeasonEpPattern = Regex(
         """(?i)\b(?:s(\d{1,2})[ ._-]*e(\d{1,3})|(\d{1,2})x(\d{1,3}))\b"""

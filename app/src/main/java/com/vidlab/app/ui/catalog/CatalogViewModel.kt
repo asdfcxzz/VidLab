@@ -175,8 +175,18 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             val allItems = sections.flatMap { it.items }
             val allOps = mutableListOf<RenameOperation>()
 
+            val unmatchedItems = mutableListOf<ScrapedMediaItem>()
             for (item in allItems) {
-                allOps.addAll(repository.generateRenamePlan(item, isManualOverride = false))
+                if (item.metadata == null) {
+                    unmatchedItems.add(item)
+                } else {
+                    allOps.addAll(repository.generateRenamePlan(item, isManualOverride = false))
+                }
+            }
+            if (unmatchedItems.isNotEmpty()) {
+                _progressState.update {
+                    it.copy(logs = it.logs + "⚠ Skipped ${unmatchedItems.size} unmatched item(s) — manual match required: ${unmatchedItems.joinToString { u -> u.title }}")
+                }
             }
 
             if (allOps.isEmpty()) {

@@ -34,7 +34,7 @@ class MediaCatalogRepository(
                 RcloneEngine.getWebDavBaseUrl(context)
             }
         )
-    private val cacheFile = File(context.filesDir, "catalog_cache_v241.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v242.json")
     private val manualBindingsFile = File(context.filesDir, "manual_bindings_v5.json")
 
     private val _ambiguousMatchesFlow = MutableSharedFlow<AmbiguousPrompt>(replay = 10)
@@ -47,7 +47,7 @@ class MediaCatalogRepository(
     init {
         try {
             context.filesDir.listFiles()?.forEach { f ->
-                if (f.name.startsWith("catalog_cache_") && f.name != "catalog_cache_v241.json") {
+                if (f.name.startsWith("catalog_cache_") && f.name != "catalog_cache_v242.json") {
                     f.delete()
                 }
             }
@@ -406,13 +406,11 @@ class MediaCatalogRepository(
                         is MatchResult.NoMatch -> {
                             if (prevCached?.metadata == null) {
                                 val fallbackCandidates = runCatching { scraper.searchMetadata(queryName) }.getOrDefault(emptyList())
-                                if (fallbackCandidates.size > 1) {
-                                    _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, fallbackCandidates))
-                                } else if (fallbackCandidates.size == 1) {
+                                if (fallbackCandidates.size == 1 && fallbackCandidates.first().title.equals(queryName, ignoreCase = true)) {
                                     val only = fallbackCandidates.first()
-                                    if (only.title.equals(queryName, ignoreCase = true)) {
-                                        finalMeta = MediaMetadata(only.title, only.posterUrl, only.posterUrl, only.year, listOf("Movie"))
-                                    }
+                                    finalMeta = MediaMetadata(only.title, only.posterUrl, only.posterUrl, only.year, listOf("Movie"))
+                                } else {
+                                    _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, fallbackCandidates))
                                 }
                             }
                         }
@@ -458,6 +456,7 @@ class MediaCatalogRepository(
         isManualOverride: Boolean = false
     ): List<RenameOperation> {
         val plan = mutableListOf<RenameOperation>()
+        if (item.metadata == null && !isManualOverride) return emptyList()
 
 
 
