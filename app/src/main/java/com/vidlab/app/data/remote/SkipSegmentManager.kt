@@ -168,7 +168,7 @@ object SkipSegmentManager {
             if (rawChapters.isEmpty()) return@runCatching emptyList()
 
             val sorted = rawChapters.sortedBy { it.startMs }
-            sorted.mapIndexed { idx, ch ->
+            val initial = sorted.mapIndexed { idx, ch ->
                 val inferredEnd = when {
                     ch.endMs > ch.startMs -> ch.endMs
                     idx + 1 < sorted.size -> sorted[idx + 1].startMs
@@ -177,6 +177,24 @@ object SkipSegmentManager {
                 }
                 val segType = classifyChapterTitle(ch.title)
                 SkipSegment(ch.startMs, inferredEnd, segType, ch.title)
+            }
+
+            // If MKV chapters use generic names ("Chapter 01", etc.), infer standard ~85-95s OP/ED segments
+            val hasNamedSkip = initial.any { it.type != SegmentType.CHAPTER }
+            if (!hasNamedSkip && durationMs > 300_000L) {
+                initial.map { seg ->
+                    val segLen = seg.endMs - seg.startMs
+                    val isStandardOpEdLen = segLen in 65_000L..130_000L
+                    when {
+                        isStandardOpEdLen && seg.startMs < 300_000L ->
+                            seg.copy(type = SegmentType.INTRO, title = "Intro")
+                        isStandardOpEdLen && (durationMs - seg.endMs) < 180_000L ->
+                            seg.copy(type = SegmentType.OUTRO, title = "Outro")
+                        else -> seg
+                    }
+                }
+            } else {
+                initial
             }
         }.getOrDefault(emptyList())
     }

@@ -206,6 +206,45 @@ private fun ModernPlayerScreen(
     var simklScrobbled by remember { mutableStateOf(false) }
     var skipSegments by remember { mutableStateOf<List<SkipSegment>>(emptyList()) }
     var autoSkippedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var activeFilePath by remember { mutableStateOf(filePath) }
+    var activeTitle by remember { mutableStateOf(title) }
+    var activeStreamUrl by remember { mutableStateOf(streamUrl) }
+    var siblingEpisodes by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+
+    LaunchedEffect(activeFilePath) {
+        if (activeFilePath.isNotBlank()) {
+            siblingEpisodes = fetchSiblingEpisodes(activeFilePath)
+        }
+    }
+
+    val currentEpIndex = remember(siblingEpisodes, activeFilePath) {
+        siblingEpisodes.indexOfFirst { it.first == activeFilePath }
+    }
+    val prevEpisode = if (currentEpIndex > 0) siblingEpisodes[currentEpIndex - 1] else null
+    val nextEpisode = if (currentEpIndex >= 0 && currentEpIndex + 1 < siblingEpisodes.size) siblingEpisodes[currentEpIndex + 1] else null
+
+    fun switchToEpisode(targetPath: String, targetFileName: String) {
+        if (activeFilePath.isNotBlank() && duration > 0L) {
+            WatchProgressStore(context).saveProgress(activeFilePath, player.currentPosition, duration)
+        }
+        val encoded = targetPath.split("/").joinToString("/") { seg ->
+            if (seg.isEmpty()) "" else Uri.encode(seg)
+        }
+        val newUrl = if (targetPath.startsWith("http")) targetPath else "http://127.0.0.1:8080$encoded"
+        activeFilePath = targetPath
+        activeTitle = targetFileName.substringBeforeLast('.')
+        activeStreamUrl = newUrl
+        skipSegments = emptyList()
+        autoSkippedIds = emptySet()
+        simklScrobbled = false
+        val saved = WatchProgressStore(context).getProgress(targetPath)
+        player.setMediaItem(MediaItem.fromUri(Uri.parse(newUrl)))
+        player.prepare()
+        if (saved != null && !saved.watched && saved.positionMs > 3000L) {
+            player.seekTo(saved.positionMs)
+        }
+        player.playWhenReady = true
+    }
     var customScale by remember { mutableFloatStateOf(1f) }
     var customOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -319,9 +358,9 @@ private fun ModernPlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    LaunchedEffect(title, duration) {
-        if (playerPrefs.skipSegmentsEnabled && title.isNotBlank()) {
-            val fetched = SkipSegmentManager.fetchSegmentsForMedia(title, duration, streamUrl)
+    LaunchedEffect(activeTitle, activeStreamUrl, duration) {
+        if (playerPrefs.skipSegmentsEnabled && activeTitle.isNotBlank()) {
+            val fetched = SkipSegmentManager.fetchSegmentsForMedia(activeTitle, duration, activeStreamUrl)
             if (fetched.isNotEmpty()) {
                 val existingChapters = skipSegments.filter { it.type == SegmentType.CHAPTER }
                 skipSegments = (fetched + existingChapters).sortedBy { it.startMs }
@@ -347,11 +386,11 @@ private fun ModernPlayerScreen(
                 }
             }
             if (duration > 0L && currentPos > 0L && (currentPos / 1000L) % 5L == 0L) {
-                if (filePath.isNotBlank()) WatchProgressStore(context).saveProgress(filePath, currentPos, duration)
+                if (activeFilePath.isNotBlank()) WatchProgressStore(context).saveProgress(activeFilePath, currentPos, duration)
                 if (!simklScrobbled && currentPos.toFloat() / duration.toFloat() >= 0.80f) {
                     simklScrobbled = true
                     CoroutineScope(Dispatchers.IO).launch {
-                        SimklManager(context).scrobblePlayback(title)
+                        SimklManager(context).scrobblePlayback(activeTitle)
                     }
                 }
             }
@@ -703,7 +742,7 @@ private fun ModernPlayerScreen(
                         modifier = Modifier.weight(1f, fill = false)
                     ) {
                         Text(
-                            text = title,
+                            text = activeTitle,
                             color = Color.White,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
@@ -746,21 +785,58 @@ private fun ModernPlayerScreen(
                     }
                 }
 
-                // CENTER PLAY/PAUSE
-                IconButton(
-                    onClick = { if (player.isPlaying) player.pause() else player.play() },
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(66.dp)
-                        .clip(CircleShape)
-                        .background(hudCircleBg)
+                // CENTER: Previous Episode, Play/Pause, Next Episode
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(28.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(34.dp)
-                    )
+                    IconButton(
+                        onClick = { prevEpisode?.let { switchToEpisode(it.first, it.second) } },
+                        enabled = prevEpisode != null,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(hudCircleBg.copy(alpha = if (prevEpisode != null) 0.8f else 0.35f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous Episode",
+                            tint = Color.White.copy(alpha = if (prevEpisode != null) 1f else 0.35f),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { if (player.isPlaying) player.pause() else player.play() },
+                        modifier = Modifier
+                            .size(66.dp)
+                            .clip(CircleShape)
+                            .background(hudCircleBg)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { nextEpisode?.let { switchToEpisode(it.first, it.second) } },
+                        enabled = nextEpisode != null,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(hudCircleBg.copy(alpha = if (nextEpisode != null) 0.8f else 0.35f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next Episode",
+                            tint = Color.White.copy(alpha = if (nextEpisode != null) 1f else 0.35f),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                 }
 
                 // BOTTOM CONTROLS + SEGMENTED SEEKBAR
@@ -893,9 +969,9 @@ private fun ModernPlayerScreen(
                             androidx.compose.foundation.Canvas(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(14.dp)
+                                    .height(24.dp)
                             ) {
-                                val trackH = 6.dp.toPx()
+                                val trackH = 10.dp.toPx()
                                 val topY = (size.height - trackH) / 2f
                                 val corner = androidx.compose.ui.geometry.CornerRadius(trackH / 2f, trackH / 2f)
 
@@ -939,8 +1015,8 @@ private fun ModernPlayerScreen(
                                     }
                                 }
 
-                                val thumbW = 5.dp.toPx()
-                                val thumbH = 16.dp.toPx()
+                                val thumbW = 6.dp.toPx()
+                                val thumbH = 22.dp.toPx()
                                 val thumbX = (size.width * progressFraction - thumbW / 2f).coerceIn(0f, size.width - thumbW)
                                 drawRoundRect(
                                     color = Color(0xFF90CAF9),
@@ -1138,6 +1214,40 @@ private fun ModernPlayerScreen(
         }
     }
 }
+
+
+private suspend fun fetchSiblingEpisodes(currentFilePath: String): List<Pair<String, String>> =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (currentFilePath.isBlank() || currentFilePath.startsWith("http")) return@withContext emptyList()
+        val parentDir = currentFilePath.substringBeforeLast("/", "")
+        if (parentDir.isBlank()) return@withContext emptyList()
+        runCatching {
+            val encodedDir = parentDir.split("/").joinToString("/") { seg ->
+                if (seg.isEmpty()) "" else Uri.encode(seg)
+            }
+            val url = java.net.URL("http://127.0.0.1:8080$encodedDir/")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "PROPFIND"
+                setRequestProperty("Depth", "1")
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            if (conn.responseCode !in 200..299) return@runCatching emptyList()
+            val xml = conn.inputStream.bufferedReader().use { it.readText() }
+            val hrefRegex = Regex("<[^>]*href[^>]*>([^<]+)</[^>]*href>", RegexOption.IGNORE_CASE)
+            val videoExts = setOf("mkv", "mp4", "avi", "webm", "mov", "m4v")
+            hrefRegex.findAll(xml)
+                .map { java.net.URLDecoder.decode(it.groupValues[1], "UTF-8").trimEnd('/') }
+                .filter { path ->
+                    val ext = path.substringAfterLast('.', "").lowercase()
+                    ext in videoExts && path != parentDir
+                }
+                .distinct()
+                .sorted()
+                .map { path -> path to path.substringAfterLast('/') }
+                .toList()
+        }.getOrDefault(emptyList())
+    }
 
 private fun formatDuration(ms: Long): String {
     if (ms <= 0L) return "00:00"
