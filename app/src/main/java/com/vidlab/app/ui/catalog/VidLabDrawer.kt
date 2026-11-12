@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.OpenInNew
@@ -53,7 +54,8 @@ fun VidLabDrawerContent(
     onSimklToggle: (Boolean) -> Unit,
     onRescanClick: () -> Unit,
     onRunRenamerClick: () -> Unit,
-    onBrowseStorageClick: () -> Unit = {}
+    onBrowseStorageClick: () -> Unit = {},
+    onRecentClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -554,6 +556,12 @@ fun VidLabDrawerContent(
             Text("LIBRARY & ORGANIZATION", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
+            DrawerActionButton(
+                icon = Icons.Default.PlayArrow,
+                title = "Recent",
+                subtitle = "Watch history & continue watching",
+                onClick = onRecentClick
+            )
             DrawerActionButton(
                 icon = Icons.Default.Refresh,
                 title = "Rescan Library Catalog",

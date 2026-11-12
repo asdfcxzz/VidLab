@@ -2,6 +2,14 @@ package com.vidlab.app
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -77,6 +85,7 @@ class MainActivity : ComponentActivity() {
             var selectedItem by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var itemForOptions by remember { mutableStateOf<ScrapedMediaItem?>(null) }
             var showRenamerModal by remember { mutableStateOf(false) }
+            var showRecentHistoryModal by remember { mutableStateOf(false) }
             var showSourceSheet by remember { mutableStateOf(false) }
             var activeAmbiguousPrompt by remember { mutableStateOf<AmbiguousPrompt?>(null) }
 
@@ -116,6 +125,10 @@ class MainActivity : ComponentActivity() {
                         onBrowseStorageClick = {
                             coroutineScope.launch { drawerState.close() }
                             showSourceSheet = true
+                        },
+                        onRecentClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showRecentHistoryModal = true
                         }
                     )
                 }
@@ -146,6 +159,93 @@ class MainActivity : ComponentActivity() {
                             onRematchItem = { item ->
                                 itemForOptions = item
                                 viewModel.searchCandidates(item.title)
+                            }
+                        )
+                    }
+
+                                        if (showRecentHistoryModal) {
+                        val historyStore = remember { com.vidlab.app.data.prefs.WatchProgressStore(this@MainActivity) }
+                        val rev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
+                        val historyList = remember(sections, rev) {
+                            historyStore.getWatchHistory(sections.flatMap { it.items }.distinctBy { it.id })
+                        }
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { showRecentHistoryModal = false },
+                            containerColor = Color(0xFF131A29),
+                            title = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Recent Watch History", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    if (historyList.isNotEmpty()) {
+                                        TextButton(onClick = { historyStore.clearHistory() }) {
+                                            Text("Clear", color = Color(0xFF8B85CF), fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            },
+                            text = {
+                                if (historyList.isEmpty()) {
+                                    Text(
+                                        "No watch history yet. Play any movie or episode and it will appear here.",
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 13.sp
+                                    )
+                                } else {
+                                    androidx.compose.foundation.lazy.LazyColumn(
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.heightIn(max = 420.dp)
+                                    ) {
+                                        items(historyList.size) { idx ->
+                                            val entry = historyList[idx]
+                                            Surface(
+                                                onClick = {
+                                                    showRecentHistoryModal = false
+                                                    selectedItem = entry.item
+                                                },
+                                                color = Color(0xFF1A2236),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    coil.compose.AsyncImage(
+                                                        model = entry.item.posterUrl ?: entry.item.backdropUrl,
+                                                        contentDescription = entry.item.title,
+                                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                        modifier = Modifier.size(width = 46.dp, height = 66.dp).clip(RoundedCornerShape(6.dp))
+                                                    )
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(entry.item.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                        val sub = buildString {
+                                                            if (entry.episodeLabel != null) append("${entry.episodeLabel} • ")
+                                                            if (entry.progress.watched) append("Watched")
+                                                            else append("${(entry.progress.fraction * 100).toInt()}% watched")
+                                                        }
+                                                        Text(sub, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                                        Spacer(modifier = Modifier.height(6.dp))
+                                                        LinearProgressIndicator(
+                                                            progress = { if (entry.progress.watched) 1f else entry.progress.fraction },
+                                                            color = Color(0xFF8B85CF),
+                                                            trackColor = Color(0xFF222E46),
+                                                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showRecentHistoryModal = false }) {
+                                    Text("Close", color = Color(0xFF8B85CF), fontWeight = FontWeight.Bold)
+                                }
                             }
                         )
                     }

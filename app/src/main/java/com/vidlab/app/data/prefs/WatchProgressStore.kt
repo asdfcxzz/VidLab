@@ -65,4 +65,49 @@ class WatchProgressStore(context: Context) {
             .apply()
         bump()
     }
+
+    data class HistoryRecord(
+        val item: com.vidlab.app.data.model.ScrapedMediaItem,
+        val episodeLabel: String?,
+        val progress: WatchProgress
+    )
+
+    fun getLastWatchedItem(items: List<com.vidlab.app.data.model.ScrapedMediaItem>): com.vidlab.app.data.model.ScrapedMediaItem? {
+        return getWatchHistory(items).firstOrNull()?.item
+    }
+
+    fun getWatchHistory(items: List<com.vidlab.app.data.model.ScrapedMediaItem>): List<HistoryRecord> {
+        val records = mutableListOf<HistoryRecord>()
+        for (item in items) {
+            if (item.isSeries && item.seasons.isNotEmpty()) {
+                var latestEpProg: WatchProgress? = null
+                var latestEpLabel: String? = null
+                for (season in item.seasons) {
+                    for (ep in season.episodes) {
+                        val prog = getProgress(ep.file.path)
+                        if (prog != null && prog.updatedAt > 0L) {
+                            if (latestEpProg == null || prog.updatedAt > latestEpProg.updatedAt) {
+                                latestEpProg = prog
+                                latestEpLabel = "S%02dE%02d".format(ep.seasonNumber, ep.episodeNumber)
+                            }
+                        }
+                    }
+                }
+                if (latestEpProg != null) {
+                    records.add(HistoryRecord(item, latestEpLabel, latestEpProg))
+                }
+            } else {
+                val prog = getProgress(item.primaryFile.path)
+                if (prog != null && prog.updatedAt > 0L) {
+                    records.add(HistoryRecord(item, null, prog))
+                }
+            }
+        }
+        return records.sortedByDescending { it.progress.updatedAt }
+    }
+
+    fun clearHistory() {
+        prefs.edit().clear().apply()
+        bump()
+    }
 }
