@@ -359,8 +359,8 @@ fun MediaCenterScreen(
             ) {
                 Surface(
                     color = Color(0x880A0E17),
-                    shape = CircleShape,
-                    modifier = Modifier.border(0.8.dp, BorderPurple, CircleShape)
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.border(0.8.dp, BorderPurple, RoundedCornerShape(14.dp))
                 ) {
                     IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
                         Icon(
