@@ -343,12 +343,25 @@ object RcloneEngine {
 
     suspend fun moveFile(context: Context, oldLogicalPath: String, newLogicalPath: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val target = prepareRuntimeServeTarget(context) ?: error("No active Rclone remote configured")
+            prepareRuntimeServeTarget(context) ?: error("No active Rclone remote configured")
             val bin = getBinaryFile(context)
             require(bin.exists()) { "Embedded rclone binary not found" }
             val runtimeConf = getRuntimeServeConfigFile(context)
-            val src = "${target.trimEnd(':')}/${oldLogicalPath.trimStart('/')}"
-            val dst = "${target.trimEnd(':')}/${newLogicalPath.trimStart('/')}"
+
+            fun toRemoteSpec(logicalPath: String): String {
+                val clean = logicalPath.trimStart('/')
+                val slashIdx = clean.indexOf('/')
+                return if (slashIdx > 0) {
+                    val remoteName = clean.substring(0, slashIdx)
+                    val relPath = clean.substring(slashIdx + 1)
+                    "$remoteName:$relPath"
+                } else {
+                    "vidlab_mount:$clean"
+                }
+            }
+
+            val src = toRemoteSpec(oldLogicalPath)
+            val dst = toRemoteSpec(newLogicalPath)
             val cmd = listOf(
                 bin.absolutePath,
                 "moveto",
