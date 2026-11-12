@@ -17,6 +17,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.geometry.Offset
@@ -601,20 +603,40 @@ private fun ModernPlayerScreen(
                 }
                 .pointerInput(isLocked) {
                     if (!isLocked) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            if (zoom != 1f || customScale > 1.01f) {
-                                val nextScale = (customScale * zoom).coerceIn(1f, 3.0f)
-                                customScale = nextScale
-                                customOffset = if (nextScale <= 1.01f) {
-                                    Offset.Zero
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var prevDist = 0f
+                            var prevCentroid = Offset.Zero
+                            do {
+                                val event = awaitPointerEvent()
+                                val pressed = event.changes.filter { it.pressed }
+                                if (pressed.size >= 2) {
+                                    val p0 = pressed[0].position
+                                    val p1 = pressed[1].position
+                                    val dist = (p0 - p1).getDistance()
+                                    val centroid = Offset((p0.x + p1.x) / 2f, (p0.y + p1.y) / 2f)
+                                    if (prevDist > 0f && dist > 0f) {
+                                        val zoom = dist / prevDist
+                                        val pan = centroid - prevCentroid
+                                        val nextScale = (customScale * zoom).coerceIn(1f, 3.0f)
+                                        customScale = nextScale
+                                        customOffset = if (nextScale <= 1.01f) {
+                                            Offset.Zero
+                                        } else {
+                                            Offset(
+                                                x = (customOffset.x + pan.x).coerceIn(-size.width * 0.6f, size.width * 0.6f),
+                                                y = (customOffset.y + pan.y).coerceIn(-size.height * 0.6f, size.height * 0.6f)
+                                            )
+                                        }
+                                        gestureOverlayText = "Zoom: ${(customScale * 100).toInt()}%"
+                                    }
+                                    prevDist = dist
+                                    prevCentroid = centroid
+                                    pressed.forEach { it.consume() }
                                 } else {
-                                    Offset(
-                                        x = (customOffset.x + pan.x).coerceIn(-size.width * 0.6f, size.width * 0.6f),
-                                        y = (customOffset.y + pan.y).coerceIn(-size.height * 0.6f, size.height * 0.6f)
-                                    )
+                                    prevDist = 0f
                                 }
-                                gestureOverlayText = "Zoom: ${(customScale * 100).toInt()}%"
-                            }
+                            } while (event.changes.any { it.pressed })
                         }
                     }
                 }

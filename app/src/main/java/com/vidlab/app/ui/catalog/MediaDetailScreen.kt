@@ -555,9 +555,7 @@ fun MediaDetailScreen(
                         .trim()
                         .ifEmpty { "Episode ${ep.episodeNumber}" }
 
-                    val epProgress = remember(ep.file.path, progressRevision) {
-                        progressStore.getProgress(ep.file.path)
-                    }
+                    val epProgress = progressStore.getProgress(ep.file.path)
 
                     val isSelected = ep.file.path in selectedEpisodePaths
                     EpisodeCard(

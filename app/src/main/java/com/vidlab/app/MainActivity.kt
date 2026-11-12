@@ -44,6 +44,25 @@ class MainActivity : ComponentActivity() {
                 .respectCacheHeaders(false)
                 .build()
         )
+        val permsToRequest = buildList {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                add(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.Q) {
+                add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+        if (permsToRequest.isNotEmpty()) {
+            val missing = permsToRequest.filter {
+                androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                registerForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+                ) {}.launch(missing.toTypedArray())
+            }
+        }
+
         com.vidlab.app.data.remote.RcloneEngine.startForegroundServeService(this)
 
         setContent {

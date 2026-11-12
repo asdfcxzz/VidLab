@@ -191,7 +191,7 @@ object DownloadTaskManager {
 
             var downloaded = existingBytes
             var lastNotifyMs = 0L
-            val buf = ByteArray(64 * 1024)
+            val buf = ByteArray(128 * 1024)
 
             conn.inputStream.use { input ->
                 FileOutputStream(partFile, existingBytes > 0L).use { output ->
@@ -201,7 +201,7 @@ object DownloadTaskManager {
                         output.write(buf, 0, read)
                         downloaded += read
                         val now = System.currentTimeMillis()
-                        if (now - lastNotifyMs >= 650L) {
+                        if (now - lastNotifyMs >= 1500L) {
                             lastNotifyMs = now
                             updateTask(seed.id) {
                                 it.copy(status = DownloadStatus.DOWNLOADING, bytesDownloaded = downloaded, totalBytes = totalLen)
