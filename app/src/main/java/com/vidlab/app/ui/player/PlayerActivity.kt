@@ -95,10 +95,10 @@ class PlayerActivity : ComponentActivity() {
         val rawPath = intent.getStringExtra("FILE_PATH") ?: ""
         val fileName = intent.getStringExtra("FILE_NAME") ?: "Playing"
         val displayTitle = fileName.substringBeforeLast('.')
-        val encodedPath = rawPath.split("/").joinToString("/") { segment ->
-            if (segment.isEmpty()) "" else Uri.encode(segment)
+        val streamUrl = com.vidlab.app.data.remote.RcloneEngine.buildStreamUrl(this, rawPath)
+        if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(this)) {
+            com.vidlab.app.data.remote.RcloneEngine.startForegroundServeService(this)
         }
-        val streamUrl = if (rawPath.startsWith("http")) rawPath else "http://127.0.0.1:8080$encodedPath"
 
         val playerPrefs = PlayerPreferences(this)
         val watchProgressStore = WatchProgressStore(this)
@@ -109,7 +109,7 @@ class PlayerActivity : ComponentActivity() {
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
         }
         val renderersFactory = DefaultRenderersFactory(this).setExtensionRendererMode(extMode)
-        exoPlayer = ExoPlayer.Builder(this, renderersFactory).build().apply {
+        val createdPlayer = ExoPlayer.Builder(this, renderersFactory).build().apply {
             if (playerPrefs.autoEnglishTracks) {
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()
@@ -118,12 +118,19 @@ class PlayerActivity : ComponentActivity() {
                     .build()
             }
             setPlaybackSpeed(playerPrefs.defaultSpeed)
-            setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)))
-            prepare()
-            if (savedProg != null && !savedProg.watched && savedProg.positionMs > 3000L) {
-                seekTo(savedProg.positionMs)
-            }
             playWhenReady = true
+        }
+        exoPlayer = createdPlayer
+
+        CoroutineScope(Dispatchers.Main).launch {
+            if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(this@PlayerActivity)) {
+                com.vidlab.app.data.remote.RcloneEngine.ensureServerRunning(this@PlayerActivity)
+            }
+            createdPlayer.setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)))
+            createdPlayer.prepare()
+            if (savedProg != null && !savedProg.watched && savedProg.positionMs > 3000L) {
+                createdPlayer.seekTo(savedProg.positionMs)
+            }
         }
 
         setContent {

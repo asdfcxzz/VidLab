@@ -315,9 +315,9 @@ object RcloneEngine {
             runCatching { proc.inputStream.bufferedReader().forEachLine { } }
         }.start()
 
-        repeat(25) {
+        repeat(80) {
             if (isPortReachable()) return@withContext true
-            delay(120)
+            delay(100)
         }
         isPortReachable()
     }
