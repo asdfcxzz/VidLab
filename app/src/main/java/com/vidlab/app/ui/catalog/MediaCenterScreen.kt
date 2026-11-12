@@ -114,9 +114,9 @@ fun LastWatchedHero(
                 onClick = { onWatchNow(item) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF)),
                 shape = CircleShape,
-                modifier = Modifier.width(150.dp).height(42.dp)
+                modifier = Modifier.width(185.dp).height(42.dp)
             ) {
-                Text(text = "Watch now", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Continue watching", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
