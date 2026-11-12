@@ -23,10 +23,11 @@ data class StoredBinding(
 
 class MediaCatalogRepository(
     private val context: Context,
-    val webDavClient: WebDavClient = WebDavClient(if (RcloneEngine.isRcloneModeEnabled(context)) RcloneEngine.STREAM_BASE_URL else RcloneEngine.getWebDavBaseUrl(context)),
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
+    val webDavClient: WebDavClient
+        get() = WebDavClient(RcloneEngine.getWebDavBaseUrl(context))
     private val cacheFile = File(context.filesDir, "catalog_cache_v241.json")
     private val manualBindingsFile = File(context.filesDir, "manual_bindings_v5.json")
 
@@ -450,6 +451,9 @@ class MediaCatalogRepository(
         customYear: String? = null,
         isManualOverride: Boolean = false
     ): List<RenameOperation> {
+        if (RcloneEngine.isRcloneModeEnabled(context)) {
+            return emptyList()
+        }
         val plan = mutableListOf<RenameOperation>()
 
 
