@@ -37,7 +37,7 @@ fun RenamePreviewBottomSheet(
                 .padding(horizontal = 20.dp, vertical = 10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF90CAF9))
+                Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF8B85CF))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Permanent WebDAV Rename", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
@@ -69,7 +69,7 @@ fun RenamePreviewBottomSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(vertical = 2.dp)
                         ) {
-                            Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color(0xFF90CAF9), modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color(0xFF8B85CF), modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(op.newFileName, color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
@@ -83,7 +83,7 @@ fun RenamePreviewBottomSheet(
             Button(
                 onClick = onConfirm,
                 enabled = !isRenaming && operations.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B85CF)),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {

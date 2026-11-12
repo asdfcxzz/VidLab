@@ -39,7 +39,7 @@ import kotlinx.coroutines.delay
 private val DeepPurpleBg = Color(0xFF0A0E17)
 private val SurfaceDark = Color(0xFF131A29)
 private val BorderPurple = Color(0xFF222E46)
-private val AccentViolet = Color(0xFF90CAF9)
+private val AccentViolet = Color(0xFF8B85CF)
 private val SecondaryText = Color(0xFF94A3B8)
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -370,7 +370,7 @@ fun MediaCenterScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Rescan Now", color = Color(0xFF0A0E17), fontWeight = FontWeight.Bold)
+                        Text("Rescan Now", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

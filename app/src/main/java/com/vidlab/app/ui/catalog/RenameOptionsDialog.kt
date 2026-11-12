@@ -61,7 +61,7 @@ fun RenameOptionsDialog(
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color(0xFF1D182E),
-                contentColor = Color(0xFF90CAF9)
+                contentColor = Color(0xFF8B85CF)
             ) {
                 Tab(
                     selected = selectedTab == 0,
@@ -69,8 +69,8 @@ fun RenameOptionsDialog(
                         selectedTab = 0
                         onSearch(queryText)
                     },
-                    text = { Text("Movie", color = if (selectedTab == 0) Color(0xFF90CAF9) else Color(0xFF94A3B8)) },
-                    icon = { Icon(Icons.Default.Movie, contentDescription = null, tint = if (selectedTab == 0) Color(0xFF90CAF9) else Color(0xFF94A3B8)) }
+                    text = { Text("Movie", color = if (selectedTab == 0) Color(0xFF8B85CF) else Color(0xFF94A3B8)) },
+                    icon = { Icon(Icons.Default.Movie, contentDescription = null, tint = if (selectedTab == 0) Color(0xFF8B85CF) else Color(0xFF94A3B8)) }
                 )
                 Tab(
                     selected = selectedTab == 1,
@@ -78,14 +78,14 @@ fun RenameOptionsDialog(
                         selectedTab = 1
                         onSearch(queryText)
                     },
-                    text = { Text("TV Show", color = if (selectedTab == 1) Color(0xFF90CAF9) else Color(0xFF94A3B8)) },
-                    icon = { Icon(Icons.Default.Tv, contentDescription = null, tint = if (selectedTab == 1) Color(0xFF90CAF9) else Color(0xFF94A3B8)) }
+                    text = { Text("TV Show", color = if (selectedTab == 1) Color(0xFF8B85CF) else Color(0xFF94A3B8)) },
+                    icon = { Icon(Icons.Default.Tv, contentDescription = null, tint = if (selectedTab == 1) Color(0xFF8B85CF) else Color(0xFF94A3B8)) }
                 )
                 Tab(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    text = { Text("Manual", color = if (selectedTab == 2) Color(0xFF90CAF9) else Color(0xFF94A3B8)) },
-                    icon = { Icon(Icons.Default.Edit, contentDescription = null, tint = if (selectedTab == 2) Color(0xFF90CAF9) else Color(0xFF94A3B8)) }
+                    text = { Text("Manual", color = if (selectedTab == 2) Color(0xFF8B85CF) else Color(0xFF94A3B8)) },
+                    icon = { Icon(Icons.Default.Edit, contentDescription = null, tint = if (selectedTab == 2) Color(0xFF8B85CF) else Color(0xFF94A3B8)) }
                 )
             }
 
@@ -113,7 +113,7 @@ fun RenameOptionsDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(
                         onClick = { onSearch(queryText) },
-                        modifier = Modifier.background(Color(0xFF90CAF9), RoundedCornerShape(8.dp))
+                        modifier = Modifier.background(Color(0xFF8B85CF), RoundedCornerShape(8.dp))
                     ) {
                         Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                     }
@@ -193,7 +193,7 @@ fun RenameOptionsDialog(
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = { onManualApply(manualTitle.trim(), manualYear.trim().takeIf { it.isNotBlank() }) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B85CF)),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth().height(48.dp)
                     ) {

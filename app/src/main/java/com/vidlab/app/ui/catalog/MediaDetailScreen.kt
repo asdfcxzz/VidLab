@@ -47,7 +47,7 @@ import com.vidlab.app.data.prefs.WatchProgressStore
 private val DeepPurpleBg = Color(0xFF0A0E17)
 private val SurfaceDark = Color(0xFF131A29)
 private val BorderPurple = Color(0xFF222E46)
-private val AccentViolet = Color(0xFF90CAF9)
+private val AccentViolet = Color(0xFF8B85CF)
 
 @Composable
 fun MediaDetailScreen(

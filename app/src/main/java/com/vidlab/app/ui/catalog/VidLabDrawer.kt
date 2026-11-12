@@ -57,6 +57,8 @@ fun VidLabDrawerContent(
     var useRclone by remember { mutableStateOf(RcloneEngine.isRcloneModeEnabled(context)) }
     var webDavUrl by remember { mutableStateOf(RcloneEngine.getWebDavBaseUrl(context)) }
     var rcloneRemotes by remember { mutableStateOf(RcloneEngine.getConfiguredRemotes(context)) }
+    val drawerPrefs = remember { context.getSharedPreferences("vidlab_drawer_prefs", android.content.Context.MODE_PRIVATE) }
+    var showRcloneRemotes by remember { mutableStateOf(drawerPrefs.getBoolean("show_rclone_remotes", true)) }
     var showPasteConfDialog by remember { mutableStateOf(false) }
     var pasteConfText by remember { mutableStateOf("") }
 
@@ -350,7 +352,7 @@ fun VidLabDrawerContent(
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Import rclone.conf", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Import rclone.conf", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -381,7 +383,38 @@ fun VidLabDrawerContent(
 
                         if (rcloneRemotes.isNotEmpty()) {
                             HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-                            Text("Select Remotes to Scan:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showRcloneRemotes = !showRcloneRemotes
+                                        drawerPrefs.edit().putBoolean("show_rclone_remotes", showRcloneRemotes).apply()
+                                    }
+                                    .padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val activeCount = rcloneRemotes.count { it.enabled }
+                                Text(
+                                    "Remotes ($activeCount/${rcloneRemotes.size} active)",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Surface(
+                                    color = BorderPurple,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        if (showRcloneRemotes) "Hide" else "Show",
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                            if (showRcloneRemotes) {
                             rcloneRemotes.forEachIndexed { idx, remote ->
                                 Row(
                                     modifier = Modifier
@@ -414,11 +447,12 @@ fun VidLabDrawerContent(
                                         },
                                         colors = CheckboxDefaults.colors(
                                             checkedColor = AccentViolet,
-                                            checkmarkColor = Color(0xFF0A0E17),
+                                            checkmarkColor = Color.White,
                                             uncheckedColor = Color(0xFF94A3B8)
                                         )
                                     )
                                 }
+                            }
                             }
                         } else {
                             Text(
@@ -457,11 +491,11 @@ fun VidLabDrawerContent(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth().height(40.dp)
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             if (useRclone) "Scan Selected Rclone Remotes" else "Scan WebDAV Server",
-                            color = Color(0xFF0A0E17),
+                            color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )

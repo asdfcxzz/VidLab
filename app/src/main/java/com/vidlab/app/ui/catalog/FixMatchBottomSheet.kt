@@ -71,7 +71,7 @@ fun FixMatchBottomSheet(
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
                     onClick = { onSearch(query) },
-                    modifier = Modifier.background(Color(0xFF90CAF9), RoundedCornerShape(8.dp))
+                    modifier = Modifier.background(Color(0xFF8B85CF), RoundedCornerShape(8.dp))
                 ) {
                     Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                 }

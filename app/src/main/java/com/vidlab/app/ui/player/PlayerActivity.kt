@@ -570,7 +570,7 @@ private fun ModernPlayerScreen(
         if (customScale > 1.02f && controlsVisible && !isLocked) {
             Surface(
                 onClick = { customScale = 1f; customOffset = Offset.Zero; gestureOverlayText = "Zoom: 100%" },
-                color = Color(0xFF90CAF9),
+                color = Color(0xFF8B85CF),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 24.dp)
             ) {
@@ -585,7 +585,7 @@ private fun ModernPlayerScreen(
                     customOffset = Offset.Zero
                     gestureOverlayText = "Zoom: 100%"
                 },
-                color = Color(0xFF90CAF9),
+                color = Color(0xFF8B85CF),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -603,7 +603,7 @@ private fun ModernPlayerScreen(
 
         if (isBuffering && playerError == null) {
             CircularProgressIndicator(
-                color = Color(0xFF90CAF9),
+                color = Color(0xFF8B85CF),
                 modifier = Modifier.align(Alignment.Center)
             )
         }
@@ -655,7 +655,7 @@ private fun ModernPlayerScreen(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = "Unlock Screen",
-                    tint = Color(0xFF90CAF9)
+                    tint = Color(0xFF8B85CF)
                 )
             }
         }
@@ -688,7 +688,7 @@ private fun ModernPlayerScreen(
                     Icon(
                         imageVector = Icons.Default.Forward10,
                         contentDescription = null,
-                        tint = Color(0xFF90CAF9),
+                        tint = Color(0xFF8B85CF),
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -902,7 +902,7 @@ private fun ModernPlayerScreen(
                                 },
                                 color = Color(0xE6222838),
                                 shape = RoundedCornerShape(21.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF90CAF9).copy(alpha = 0.5f)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B85CF).copy(alpha = 0.5f)),
                                 modifier = Modifier.height(42.dp)
                             ) {
                                 Row(
@@ -1005,7 +1005,7 @@ private fun ModernPlayerScreen(
                                 )
 
                                 drawRoundRect(
-                                    color = Color(0xFF90CAF9),
+                                    color = Color(0xFF8B85CF),
                                     topLeft = Offset(0f, topY),
                                     size = androidx.compose.ui.geometry.Size(size.width * progressFraction, trackH),
                                     cornerRadius = corner
@@ -1041,7 +1041,7 @@ private fun ModernPlayerScreen(
                                 val thumbH = 22.dp.toPx()
                                 val thumbX = (size.width * progressFraction - thumbW / 2f).coerceIn(0f, size.width - thumbW)
                                 drawRoundRect(
-                                    color = Color(0xFF90CAF9),
+                                    color = Color(0xFF8B85CF),
                                     topLeft = Offset(thumbX, (size.height - thumbH) / 2f),
                                     size = androidx.compose.ui.geometry.Size(thumbW, thumbH),
                                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbW / 2f, thumbW / 2f)
@@ -1090,7 +1090,7 @@ private fun ModernPlayerScreen(
                                     RadioButton(
                                         selected = track.isSelected,
                                         onClick = null,
-                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF90CAF9))
+                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B85CF))
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(track.label, color = Color.White, fontSize = 14.sp)
@@ -1101,7 +1101,7 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showAudioDialog = false }) {
-                        Text("Close", color = Color(0xFF90CAF9))
+                        Text("Close", color = Color(0xFF8B85CF))
                     }
                 }
             )
@@ -1142,7 +1142,7 @@ private fun ModernPlayerScreen(
                                 RadioButton(
                                     selected = track.isSelected,
                                     onClick = null,
-                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF90CAF9))
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B85CF))
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(track.label, color = Color.White, fontSize = 14.sp)
@@ -1152,7 +1152,7 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showSubtitleDialog = false }) {
-                        Text("Close", color = Color(0xFF90CAF9))
+                        Text("Close", color = Color(0xFF8B85CF))
                     }
                 }
             )
@@ -1182,7 +1182,7 @@ private fun ModernPlayerScreen(
                                 RadioButton(
                                     selected = playbackSpeed == spd,
                                     onClick = null,
-                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF90CAF9))
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B85CF))
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("${spd}x", color = Color.White, fontSize = 14.sp)
@@ -1192,7 +1192,7 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showSpeedDialog = false }) {
-                        Text("Close", color = Color(0xFF90CAF9))
+                        Text("Close", color = Color(0xFF8B85CF))
                     }
                 }
             )
@@ -1213,7 +1213,7 @@ private fun ModernPlayerScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 Button(
                     onClick = onBack,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B85CF))
                 ) {
                     Text("Close", color = Color.White)
                 }
