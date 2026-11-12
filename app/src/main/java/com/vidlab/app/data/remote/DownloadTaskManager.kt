@@ -1,0 +1,233 @@
+package com.vidlab.app.data.remote
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Environment
+import androidx.compose.runtime.mutableStateListOf
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.vidlab.app.data.model.MediaFile
+import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+
+enum class DownloadStatus {
+    QUEUED, DOWNLOADING, COMPLETED, FAILED, CANCELLED
+}
+
+data class DownloadTaskItem(
+    val id: String,
+    val fileName: String,
+    val remotePath: String,
+    val folderName: String,
+    val bytesDownloaded: Long = 0L,
+    val totalBytes: Long = 0L,
+    val status: DownloadStatus = DownloadStatus.QUEUED,
+    val errorMessage: String? = null
+) {
+    val progressFraction: Float
+        get() = if (totalBytes > 0L) (bytesDownloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+}
+
+object DownloadTaskManager {
+    private const val CHANNEL_ID = "vidlab_downloads"
+    private const val CHANNEL_NAME = "VidLab Downloads"
+
+    val tasks = mutableStateListOf<DownloadTaskItem>()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val activeJobs = ConcurrentHashMap<String, Job>()
+
+    private fun ensureChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (mgr.getNotificationChannel(CHANNEL_ID) == null) {
+                val ch = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Shows progress for downloaded episodes and movies"
+                }
+                mgr.createNotificationChannel(ch)
+            }
+        }
+    }
+
+    private fun postNotification(context: Context, task: DownloadTaskItem) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        ensureChannel(context)
+        val notifId = task.id.hashCode()
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(task.fileName)
+            .setOnlyAlertOnce(true)
+
+        when (task.status) {
+            DownloadStatus.QUEUED -> {
+                builder.setContentText("Queued • ${task.folderName}")
+                    .setProgress(100, 0, true)
+                    .setOngoing(true)
+            }
+            DownloadStatus.DOWNLOADING -> {
+                val pct = (task.progressFraction * 100).toInt()
+                val dlMb = String.format("%.1f MB", task.bytesDownloaded / (1024.0 * 1024.0))
+                val totMb = if (task.totalBytes > 0L) String.format(" / %.1f MB", task.totalBytes / (1024.0 * 1024.0)) else ""
+                builder.setContentText("$pct% • $dlMb$totMb")
+                    .setProgress(100, pct, task.totalBytes <= 0L)
+                    .setOngoing(true)
+            }
+            DownloadStatus.COMPLETED -> {
+                builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentText("Saved to Downloads/VidLab/${task.folderName}")
+                    .setProgress(0, 0, false)
+                    .setOngoing(false)
+            }
+            DownloadStatus.FAILED -> {
+                builder.setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentText("Failed: ${task.errorMessage ?: "Network error"}")
+                    .setProgress(0, 0, false)
+                    .setOngoing(false)
+            }
+            DownloadStatus.CANCELLED -> {
+                NotificationManagerCompat.from(context).cancel(notifId)
+                return
+            }
+        }
+        runCatching { NotificationManagerCompat.from(context).notify(notifId, builder.build()) }
+    }
+
+    private fun updateTask(id: String, transform: (DownloadTaskItem) -> DownloadTaskItem): DownloadTaskItem? {
+        val idx = tasks.indexOfFirst { it.id == id }
+        if (idx < 0) return null
+        val updated = transform(tasks[idx])
+        tasks[idx] = updated
+        return updated
+    }
+
+    fun enqueueFile(context: Context, file: MediaFile, folderName: String) {
+        val appCtx = context.applicationContext
+        val safeFolder = folderName.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "Downloads" }
+        val taskId = file.path
+
+        val existingIdx = tasks.indexOfFirst { it.id == taskId }
+        if (existingIdx >= 0) {
+            val st = tasks[existingIdx].status
+            if (st == DownloadStatus.QUEUED || st == DownloadStatus.DOWNLOADING) return
+            tasks.removeAt(existingIdx)
+        }
+
+        val initial = DownloadTaskItem(
+            id = taskId,
+            fileName = file.name,
+            remotePath = file.path,
+            folderName = safeFolder,
+            bytesDownloaded = 0L,
+            totalBytes = file.size.coerceAtLeast(0L),
+            status = DownloadStatus.QUEUED
+        )
+        tasks.add(0, initial)
+        postNotification(appCtx, initial)
+        activeJobs[taskId] = scope.launch { runDownload(appCtx, initial) }
+    }
+
+    fun enqueueBatch(context: Context, files: List<MediaFile>, folderName: String) {
+        for (f in files) enqueueFile(context, f, folderName)
+    }
+
+    fun cancelTask(context: Context, taskId: String) {
+        activeJobs.remove(taskId)?.cancel()
+        updateTask(taskId) { it.copy(status = DownloadStatus.CANCELLED) }?.let {
+            postNotification(context.applicationContext, it)
+        }
+    }
+
+    fun clearFinished() {
+        tasks.removeAll {
+            it.status == DownloadStatus.COMPLETED ||
+            it.status == DownloadStatus.FAILED ||
+            it.status == DownloadStatus.CANCELLED
+        }
+    }
+
+    private suspend fun runDownload(context: Context, seed: DownloadTaskItem) {
+        try {
+            if (RcloneEngine.isRcloneModeEnabled(context)) {
+                RcloneEngine.startForegroundServeService(context)
+            }
+            val streamUrl = RcloneEngine.buildStreamUrl(context, seed.remotePath)
+            val downloadsRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val targetDir = File(File(downloadsRoot, "VidLab"), seed.folderName).apply { if (!exists()) mkdirs() }
+            val outFile = File(targetDir, seed.fileName)
+            val partFile = File(targetDir, "${seed.fileName}.part")
+
+            var existingBytes = if (partFile.exists()) partFile.length() else 0L
+            val conn = (URL(streamUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 20000
+                readTimeout = 30000
+                requestMethod = "GET"
+                if (existingBytes > 0L) setRequestProperty("Range", "bytes=$existingBytes-")
+            }
+            conn.connect()
+            val code = conn.responseCode
+            if (code !in 200..299 && code != 206) throw IllegalStateException("HTTP $code")
+            if (code == 200 && existingBytes > 0L) existingBytes = 0L
+
+            val contentLen = conn.contentLengthLong
+            val totalLen = when {
+                contentLen > 0L -> existingBytes + contentLen
+                seed.totalBytes > 0L -> seed.totalBytes
+                else -> 0L
+            }
+
+            updateTask(seed.id) {
+                it.copy(status = DownloadStatus.DOWNLOADING, bytesDownloaded = existingBytes, totalBytes = totalLen)
+            }?.let { postNotification(context, it) }
+
+            var downloaded = existingBytes
+            var lastNotifyMs = 0L
+            val buf = ByteArray(64 * 1024)
+
+            conn.inputStream.use { input ->
+                FileOutputStream(partFile, existingBytes > 0L).use { output ->
+                    while (currentCoroutineContext().isActive) {
+                        val read = input.read(buf)
+                        if (read == -1) break
+                        output.write(buf, 0, read)
+                        downloaded += read
+                        val now = System.currentTimeMillis()
+                        if (now - lastNotifyMs >= 650L) {
+                            lastNotifyMs = now
+                            updateTask(seed.id) {
+                                it.copy(status = DownloadStatus.DOWNLOADING, bytesDownloaded = downloaded, totalBytes = totalLen)
+                            }?.let { postNotification(context, it) }
+                        }
+                    }
+                    output.flush()
+                }
+            }
+            conn.disconnect()
+            if (!currentCoroutineContext().isActive) return
+
+            if (outFile.exists()) outFile.delete()
+            partFile.renameTo(outFile)
+
+            updateTask(seed.id) {
+                it.copy(status = DownloadStatus.COMPLETED, bytesDownloaded = downloaded, totalBytes = if (totalLen > 0L) totalLen else downloaded)
+            }?.let { postNotification(context, it) }
+        } catch (e: CancellationException) {
+            updateTask(seed.id) { it.copy(status = DownloadStatus.CANCELLED) }?.let { postNotification(context, it) }
+        } catch (e: Exception) {
+            updateTask(seed.id) {
+                it.copy(status = DownloadStatus.FAILED, errorMessage = e.message ?: "Download error")
+            }?.let { postNotification(context, it) }
+        } finally {
+            activeJobs.remove(seed.id)
+        }
+    }
+}

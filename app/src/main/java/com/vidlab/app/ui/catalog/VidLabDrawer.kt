@@ -29,11 +29,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vidlab.app.data.prefs.PlayerPreferences
 import com.vidlab.app.data.remote.SimklManager
 import com.vidlab.app.data.remote.SimklPinSession
+import com.vidlab.app.data.remote.DownloadTaskManager
+import com.vidlab.app.data.remote.DownloadStatus
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Close
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -890,6 +895,89 @@ fun VidLabDrawerContent(
                 Icon(Icons.Default.RestartAlt, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Reset Settings to Default", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            val downloadTasks = DownloadTaskManager.tasks
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("TASK PROGRESS (${downloadTasks.size})", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                if (downloadTasks.any { it.status == DownloadStatus.COMPLETED || it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
+                    Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { DownloadTaskManager.clearFinished() })
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            if (downloadTasks.isEmpty()) {
+                Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "No active downloads. Long-press an episode or use the 3-dot menu to download.",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (task in downloadTasks) {
+                        Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(task.fileName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(task.folderName, color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    if (task.status == DownloadStatus.QUEUED || task.status == DownloadStatus.DOWNLOADING) {
+                                        IconButton(onClick = { DownloadTaskManager.cancelTask(context, task.id) }, modifier = Modifier.size(26.dp)) {
+                                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                                LinearProgressIndicator(
+                                    progress = { task.progressFraction },
+                                    color = when (task.status) {
+                                        DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
+                                        DownloadStatus.FAILED -> Color(0xFFEF5350)
+                                        else -> AccentViolet
+                                    },
+                                    trackColor = BorderPurple,
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                                )
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    val dlStr = String.format("%.1f MB", task.bytesDownloaded / (1024.0 * 1024.0))
+                                    val totStr = if (task.totalBytes > 0L) String.format(" / %.1f MB", task.totalBytes / (1024.0 * 1024.0)) else ""
+                                    Text("$dlStr$totStr", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                    val statusLabel = when (task.status) {
+                                        DownloadStatus.QUEUED -> "Queued"
+                                        DownloadStatus.DOWNLOADING -> "${(task.progressFraction * 100).toInt()}%"
+                                        DownloadStatus.COMPLETED -> "Completed"
+                                        DownloadStatus.FAILED -> "Failed"
+                                        DownloadStatus.CANCELLED -> "Cancelled"
+                                    }
+                                    Text(
+                                        text = statusLabel,
+                                        color = when (task.status) {
+                                            DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
+                                            DownloadStatus.FAILED -> Color(0xFFEF5350)
+                                            else -> AccentViolet
+                                        },
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

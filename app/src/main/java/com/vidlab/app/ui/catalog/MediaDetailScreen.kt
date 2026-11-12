@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -43,6 +45,11 @@ import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
 import com.vidlab.app.data.prefs.WatchProgress
 import com.vidlab.app.data.prefs.WatchProgressStore
+import com.vidlab.app.data.remote.DownloadTaskManager
+import android.widget.Toast
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Close
 
 private val DeepPurpleBg = Color(0xFF0A0E17)
 private val SurfaceDark = Color(0xFF131A29)
@@ -71,6 +78,9 @@ fun MediaDetailScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var showPlotExpanded by remember { mutableStateOf(false) }
     var showFileDetailsDialog by remember { mutableStateOf(false) }
+    var selectionMode by remember { mutableStateOf(false) }
+    val selectedEpisodePaths = remember { mutableStateListOf<String>() }
+    var actionTargetFile by remember { mutableStateOf<MediaFile?>(null) }
 
     val launchExternal: (MediaFile) -> Unit = { file ->
         if (onOpenExternalPlayer != null) {
@@ -251,6 +261,16 @@ fun MediaDetailScreen(
                                     }
                                 )
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp)) },
+                                    text = { Text(if (item.isSeries) "Batch Download Current Folder" else "Download Movie", color = Color.White, fontSize = 13.sp) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        val files = if (item.isSeries && allEpisodes.isNotEmpty()) allEpisodes.map { it.file } else listOf(item.primaryFile)
+                                        DownloadTaskManager.enqueueBatch(context, files, item.title)
+                                        Toast.makeText(context, "Queued ${files.size} file(s) for download", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
                                 DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Storage & File Info", color = Color.White, fontSize = 13.sp) },
@@ -479,6 +499,51 @@ fun MediaDetailScreen(
             }
 
             if (currentSeason != null) {
+                if (selectionMode) {
+                    item(key = "multi_select_bar") {
+                        Surface(
+                            color = SurfaceDark,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, AccentViolet),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("${selectedEpisodePaths.size} selected", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    val seasonPaths = currentSeason.episodes.map { it.file.path }
+                                    if (seasonPaths.all { it in selectedEpisodePaths }) selectedEpisodePaths.removeAll(seasonPaths)
+                                    else seasonPaths.forEach { if (it !in selectedEpisodePaths) selectedEpisodePaths.add(it) }
+                                }) { Text("Select All", color = AccentViolet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+                                Button(
+                                    onClick = {
+                                        val picked = allEpisodes.filter { it.file.path in selectedEpisodePaths }.map { it.file }
+                                        if (picked.isNotEmpty()) {
+                                            DownloadTaskManager.enqueueBatch(context, picked, item.title)
+                                            Toast.makeText(context, "Queued ${picked.size} episode(s)", Toast.LENGTH_SHORT).show()
+                                        }
+                                        selectedEpisodePaths.clear()
+                                        selectionMode = false
+                                    },
+                                    enabled = selectedEpisodePaths.isNotEmpty(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Download", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                IconButton(onClick = { selectedEpisodePaths.clear(); selectionMode = false }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
                 items(currentSeason.episodes, key = { it.file.path }, contentType = { "episode" }) { ep ->
                     val sizeStr = if (ep.file.size > 0) {
                         String.format("%.2f GB", ep.file.size / 1024.0 / 1024.0 / 1024.0)
@@ -494,6 +559,7 @@ fun MediaDetailScreen(
                         progressStore.getProgress(ep.file.path)
                     }
 
+                    val isSelected = ep.file.path in selectedEpisodePaths
                     EpisodeCard(
                         episodeTitle = cleanEpisodeName,
                         seasonNumber = ep.seasonNumber,
@@ -501,15 +567,73 @@ fun MediaDetailScreen(
                         thumbnailUrl = ep.thumbnail,
                         fileSize = sizeStr,
                         progress = epProgress,
-                        onPlayClick = { onPlayClick(ep.file) },
+                        selectionMode = selectionMode,
+                        isSelected = isSelected,
+                        onPlayClick = {
+                            if (selectionMode) {
+                                if (isSelected) selectedEpisodePaths.remove(ep.file.path) else selectedEpisodePaths.add(ep.file.path)
+                            } else onPlayClick(ep.file)
+                        },
+                        onLongClick = {
+                            if (selectionMode) {
+                                if (isSelected) selectedEpisodePaths.remove(ep.file.path) else selectedEpisodePaths.add(ep.file.path)
+                            } else actionTargetFile = ep.file
+                        },
                         onToggleWatched = {
                             val nextState = !(epProgress?.watched ?: false)
                             progressStore.markWatched(ep.file.path, nextState)
-                        },
-                        onExternalClick = { launchExternal(ep.file) }
+                        }
                     )
                 }
             }
+        }
+
+        actionTargetFile?.let { targetFile ->
+            AlertDialog(
+                onDismissRequest = { actionTargetFile = null },
+                containerColor = SurfaceDark,
+                title = { Text(targetFile.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(
+                            onClick = {
+                                selectionMode = true
+                                if (targetFile.path !in selectedEpisodePaths) selectedEpisodePaths.add(targetFile.path)
+                                actionTargetFile = null
+                            },
+                            color = DeepPurpleBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderPurple), modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.SelectAll, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
+                                Text("Select Episodes", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        Surface(
+                            onClick = {
+                                DownloadTaskManager.enqueueFile(context, targetFile, item.title)
+                                Toast.makeText(context, "Downloading ${targetFile.name}", Toast.LENGTH_SHORT).show()
+                                actionTargetFile = null
+                            },
+                            color = DeepPurpleBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderPurple), modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
+                                Text("Download Episode", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        Surface(
+                            onClick = { actionTargetFile = null; launchExternal(targetFile) },
+                            color = DeepPurpleBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderPurple), modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(20.dp))
+                                Text("Play with External Player", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { actionTargetFile = null }) { Text("Cancel", color = Color(0xFF94A3B8)) } }
+            )
         }
 
         if (showFileDetailsDialog) {
@@ -663,6 +787,7 @@ private fun MetaBadge(text: String) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeCard(
     episodeTitle: String,
@@ -671,123 +796,73 @@ private fun EpisodeCard(
     thumbnailUrl: String?,
     fileSize: String,
     progress: WatchProgress?,
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onPlayClick: () -> Unit,
-    onToggleWatched: () -> Unit,
-    onExternalClick: () -> Unit
+    onLongClick: () -> Unit,
+    onToggleWatched: () -> Unit
 ) {
     Surface(
-        onClick = onPlayClick,
-        color = SurfaceDark,
+        color = if (isSelected) Color(0xFF1E263D) else SurfaceDark,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.5.dp, BorderPurple),
+        border = BorderStroke(if (isSelected) 1.2.dp else 0.5.dp, if (isSelected) AccentViolet else BorderPurple),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(onClick = onPlayClick, onLongClick = onLongClick)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onPlayClick() },
+                    colors = CheckboxDefaults.colors(checkedColor = AccentViolet, uncheckedColor = Color(0xFF94A3B8)),
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+            }
             Box(
-                modifier = Modifier
-                    .width(114.dp)
-                    .height(66.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BorderPurple)
+                modifier = Modifier.width(114.dp).height(66.dp).clip(RoundedCornerShape(8.dp)).background(BorderPurple)
             ) {
                 if (!thumbnailUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = thumbnailUrl,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    AsyncImage(model = thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.65f))
-                        .align(Alignment.Center),
+                    modifier = Modifier.size(28.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.65f)).align(Alignment.Center),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                 }
                 if (progress != null && progress.fraction > 0.01f && !progress.watched) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .background(Color.Black.copy(alpha = 0.6f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(progress.fraction)
-                                .fillMaxHeight()
-                                .background(AccentViolet)
-                        )
+                    Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.6f))) {
+                        Box(modifier = Modifier.fillMaxWidth(progress.fraction).fillMaxHeight().background(AccentViolet))
                     }
                 }
             }
-
             Spacer(modifier = Modifier.width(12.dp))
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 2.dp)
-            ) {
-                Text(
-                    text = episodeTitle,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Column(modifier = Modifier.weight(1f).padding(vertical = 2.dp)) {
+                Text(text = episodeTitle, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "S${seasonNumber}E${episodeNumber} • $fileSize",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 11.sp
-                    )
+                    Text(text = "S${seasonNumber}E${episodeNumber} • $fileSize", color = Color(0xFF94A3B8), fontSize = 11.sp)
                     if (progress?.watched == true) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "• Watched",
-                            color = Color(0xFF4CAF50),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Text(text = "• Watched", color = Color(0xFF4CAF50), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-
-            IconButton(onClick = onToggleWatched, modifier = Modifier.size(34.dp)) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Toggle Watched",
-                    tint = if (progress?.watched == true) Color(0xFF4CAF50) else Color(0xFF4A4266),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            IconButton(onClick = onExternalClick, modifier = Modifier.size(34.dp)) {
-                Icon(
-                    imageVector = Icons.Default.OpenInNew,
-                    contentDescription = "Open in External Player",
-                    tint = Color(0xFF94A3B8),
-                    modifier = Modifier.size(18.dp)
-                )
+            if (!selectionMode) {
+                IconButton(onClick = onToggleWatched, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Toggle Watched",
+                        tint = if (progress?.watched == true) Color(0xFF4CAF50) else Color(0xFF4A4266),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
