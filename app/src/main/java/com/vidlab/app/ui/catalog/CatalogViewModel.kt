@@ -55,9 +55,17 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadMediaCenter() {
         viewModelScope.launch {
+            val cached = withContext(Dispatchers.IO) { repository.loadCachedFeed() }
+            if (cached.isNotEmpty() && _feedSections.value.isEmpty()) {
+                _feedSections.value = cached
+            }
             _isFeedLoading.value = true
             _feedError.value = null
-            val result = repository.buildMediaCenterFeed()
+            val result = repository.buildMediaCenterFeed { partialSections ->
+                if (partialSections.isNotEmpty()) {
+                    _feedSections.value = partialSections
+                }
+            }
             result.onSuccess { sections ->
                 _feedSections.value = sections
                 _isFeedLoading.value = false

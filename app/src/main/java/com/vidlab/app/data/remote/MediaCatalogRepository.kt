@@ -74,7 +74,38 @@ class MediaCatalogRepository(
         cacheFile.delete()
     }
 
-    suspend fun buildMediaCenterFeed(): Result<List<MediaFeedSection>> = withContext(Dispatchers.IO) {
+    fun loadCachedFeed(): List<MediaFeedSection> {
+        return try {
+            if (cacheFile.exists()) json.decodeFromString(cacheFile.readText()) else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun categorizeItems(scrapedItems: List<ScrapedMediaItem>): List<MediaFeedSection> {
+        val animeList = mutableListOf<ScrapedMediaItem>()
+        val tvList = mutableListOf<ScrapedMediaItem>()
+        val movieList = mutableListOf<ScrapedMediaItem>()
+        for (item in scrapedItems) {
+            val pathUpper = item.primaryFile.path.uppercase()
+            when {
+                pathUpper.contains("/MOVIES/") || !item.isSeries -> movieList.add(item)
+                pathUpper.contains("/ANIME/") -> animeList.add(item)
+                pathUpper.contains("/SHOWS/") -> tvList.add(item)
+                else -> {
+                    val isAnimeGenre = item.metadata?.genres?.any { it.contains("animation", true) } == true
+                    if (isAnimeGenre) animeList.add(item) else tvList.add(item)
+                }
+            }
+        }
+        return listOf(
+            MediaFeedSection("Anime", animeList.sortedBy { it.title }),
+            MediaFeedSection("TV Shows", tvList.sortedBy { it.title }),
+            MediaFeedSection("Movies", movieList.sortedBy { it.title })
+        ).filter { it.items.isNotEmpty() }
+    }
+
+    suspend fun buildMediaCenterFeed(
+        onProgress: ((List<MediaFeedSection>) -> Unit)? = null
+    ): Result<List<MediaFeedSection>> = withContext(Dispatchers.IO) {
         runCatching {
             val allVideoFiles = mutableListOf<MediaFile>()
             val queue = ArrayDeque<String>()
@@ -103,33 +134,20 @@ class MediaCatalogRepository(
                 }
             }
 
-            val scrapedItems = groupAndScrapeMedia(allVideoFiles)
-            val animeList = mutableListOf<ScrapedMediaItem>()
-            val tvList = mutableListOf<ScrapedMediaItem>()
-            val movieList = mutableListOf<ScrapedMediaItem>()
-
-            for (item in scrapedItems) {
-                val pathUpper = item.primaryFile.path.uppercase()
-                when {
-                    pathUpper.contains("/MOVIES/") || !item.isSeries -> movieList.add(item)
-                    pathUpper.contains("/ANIME/") -> animeList.add(item)
-                    pathUpper.contains("/SHOWS/") -> tvList.add(item)
-                    else -> {
-                        val isAnimeGenre = item.metadata?.genres?.any { it.contains("animation", true) } == true
-                        if (isAnimeGenre) animeList.add(item) else tvList.add(item)
-                    }
-                }
+            val scrapedItems = groupAndScrapeMedia(allVideoFiles) { partialItems ->
+                onProgress?.invoke(categorizeItems(partialItems))
             }
-
-            listOf(
-                MediaFeedSection("Anime", animeList.sortedBy { it.title }),
-                MediaFeedSection("TV Shows", tvList.sortedBy { it.title }),
-                MediaFeedSection("Movies", movieList.sortedBy { it.title })
-            ).filter { it.items.isNotEmpty() }
+            val finalSections = categorizeItems(scrapedItems)
+            runCatching { cacheFile.writeText(json.encodeToString(finalSections)) }
+            finalSections
         }
     }
 
-    private suspend fun groupAndScrapeMedia(files: List<MediaFile>): List<ScrapedMediaItem> = coroutineScope {
+    private suspend fun groupAndScrapeMedia(
+        files: List<MediaFile>,
+        onItemReady: ((List<ScrapedMediaItem>) -> Unit)? = null
+    ): List<ScrapedMediaItem> = coroutineScope {
+        val completedList = java.util.Collections.synchronizedList(mutableListOf<ScrapedMediaItem>())
         val manualBindings = getManualBindings()
         val seriesBuckets = mutableMapOf<String, MutableList<MediaFile>>()
         val movieFiles = mutableListOf<MediaFile>()
@@ -282,7 +300,7 @@ class MediaCatalogRepository(
 
                 val firstPlayable = seasonGroups.firstOrNull()?.episodes?.firstOrNull()?.file ?: sampleFile
 
-                ScrapedMediaItem(
+                val builtShow = ScrapedMediaItem(
                     id = key,
                     title = officialShowTitle,
                     posterUrl = finalMeta?.posterUrl,
@@ -293,6 +311,9 @@ class MediaCatalogRepository(
                     seasons = seasonGroups,
                     metadata = finalMeta
                 )
+                completedList.add(builtShow)
+                onItemReady?.invoke(completedList.toList())
+                builtShow
             }
         }
 
@@ -335,7 +356,7 @@ class MediaCatalogRepository(
 
                 val officialMovieTitle = finalMeta?.title ?: queryName
 
-                ScrapedMediaItem(
+                val builtMovie = ScrapedMediaItem(
                     id = key,
                     title = officialMovieTitle,
                     posterUrl = finalMeta?.posterUrl,
@@ -345,6 +366,9 @@ class MediaCatalogRepository(
                     primaryFile = file,
                     metadata = finalMeta
                 )
+                completedList.add(builtMovie)
+                onItemReady?.invoke(completedList.toList())
+                builtMovie
             }
         }
 
