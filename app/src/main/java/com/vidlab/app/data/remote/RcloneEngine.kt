@@ -341,6 +341,33 @@ object RcloneEngine {
         }.getOrDefault(false)
     }
 
+    suspend fun moveFile(context: Context, oldLogicalPath: String, newLogicalPath: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val target = prepareRuntimeServeTarget(context) ?: error("No active Rclone remote configured")
+            val bin = getBinaryFile(context)
+            require(bin.exists()) { "Embedded rclone binary not found" }
+            val runtimeConf = getRuntimeServeConfigFile(context)
+            val src = "${target.trimEnd(':')}/${oldLogicalPath.trimStart('/')}"
+            val dst = "${target.trimEnd(':')}/${newLogicalPath.trimStart('/')}"
+            val cmd = listOf(
+                bin.absolutePath,
+                "moveto",
+                src,
+                dst,
+                "--config", runtimeConf.absolutePath
+            )
+            val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+            pb.environment()["SSL_CERT_DIR"] = "/system/etc/security/cacerts"
+            pb.environment()["HOME"] = context.filesDir.absolutePath
+            val proc = pb.start()
+            val out = proc.inputStream.bufferedReader().readText().trim()
+            val exitCode = proc.waitFor()
+            if (exitCode != 0) {
+                error(out.ifBlank { "rclone moveto failed (exit $exitCode)" })
+            }
+        }
+    }
+
     fun buildStreamUrl(context: Context, logicalPath: String): String {
         if (logicalPath.startsWith("http://") || logicalPath.startsWith("https://")) {
             return logicalPath

@@ -129,7 +129,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             var failed = 0
             for (op in ops) {
                 if (op.oldPath != op.newPath) {
-                    val res = repository.webDavClient.moveFile(op.oldPath, op.newPath)
+                    val res = if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(app)) com.vidlab.app.data.remote.RcloneEngine.moveFile(app, op.oldPath, op.newPath) else repository.webDavClient.moveFile(op.oldPath, op.newPath)
                     if (res.isFailure) failed++
                 }
             }
@@ -221,7 +221,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 kotlinx.coroutines.delay(250)
-                val moveResult = activeClient.moveFile(op.oldPath, op.newPath)
+                val moveResult = if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(app)) com.vidlab.app.data.remote.RcloneEngine.moveFile(app, op.oldPath, op.newPath) else activeClient.moveFile(op.oldPath, op.newPath)
                 val logEntry = if (moveResult.isSuccess) {
                     succeeded++
                     "✓ Moved: ${op.fileName} -> ${op.newPath}"
