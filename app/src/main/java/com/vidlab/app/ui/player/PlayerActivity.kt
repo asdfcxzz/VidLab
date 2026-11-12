@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -959,8 +960,29 @@ private fun ModernPlayerScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(28.dp)
-                                .padding(horizontal = 12.dp),
+                                .height(32.dp)
+                                .padding(horizontal = 12.dp)
+                                .pointerInput(duration) {
+                                    detectTapGestures { offset ->
+                                        if (duration > 0L && size.width > 0) {
+                                            val frac = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val target = (frac * duration).toLong()
+                                            currentPos = target
+                                            player.seekTo(target)
+                                        }
+                                    }
+                                }
+                                .pointerInput(duration) {
+                                    detectHorizontalDragGestures { change, _ ->
+                                        change.consume()
+                                        if (duration > 0L && size.width > 0) {
+                                            val frac = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val target = (frac * duration).toLong()
+                                            currentPos = target
+                                            player.seekTo(target)
+                                        }
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             val totalDur = duration.coerceAtLeast(1L).toFloat()
@@ -1025,21 +1047,6 @@ private fun ModernPlayerScreen(
                                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbW / 2f, thumbW / 2f)
                                 )
                             }
-
-                            Slider(
-                                value = if (duration > 0) currentPos.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
-                                onValueChange = { newVal ->
-                                    currentPos = newVal.toLong()
-                                    player.seekTo(currentPos)
-                                },
-                                valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.Transparent,
-                                    activeTrackColor = Color.Transparent,
-                                    inactiveTrackColor = Color.Transparent
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
 
                         Text(

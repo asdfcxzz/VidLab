@@ -54,8 +54,8 @@ object SkipSegmentManager {
         }
 
         // If MKV already gave us Intro or Outro chapters, keep them and skip slower network lookups unless none are skippable
-        val hasSkippable = results.any { it.type != SegmentType.CHAPTER }
-        if (!hasSkippable) {
+        val hasExplicitIntro = results.any { it.type == SegmentType.INTRO }
+        if (!hasExplicitIntro) {
             val cleanName = rawTitleOrFilename
                 .substringAfterLast("/")
                 .substringBeforeLast(".")
@@ -184,11 +184,11 @@ object SkipSegmentManager {
             if (!hasNamedSkip && durationMs > 300_000L) {
                 initial.map { seg ->
                     val segLen = seg.endMs - seg.startMs
-                    val isStandardOpEdLen = segLen in 65_000L..130_000L
+                    val isStandardOpEdLen = segLen in 45_000L..150_000L
                     when {
-                        isStandardOpEdLen && seg.startMs < 300_000L ->
+                        isStandardOpEdLen && seg.startMs < 420_000L ->
                             seg.copy(type = SegmentType.INTRO, title = "Intro")
-                        isStandardOpEdLen && (durationMs - seg.endMs) < 180_000L ->
+                        isStandardOpEdLen && (durationMs - seg.endMs) < 270_000L ->
                             seg.copy(type = SegmentType.OUTRO, title = "Outro")
                         else -> seg
                     }
@@ -300,7 +300,7 @@ object SkipSegmentManager {
         for (idx in 0 until dataArr.length()) {
             val malId = dataArr.optJSONObject(idx)?.optInt("mal_id", 0) ?: 0
             if (malId <= 0) continue
-            val skipUrl = "https://api.aniskip.com/v2/skip-times/$malId/$episode?types=op&types=ed&types=recap&types=mixed-op&episodeLength=$epLenSec"
+            val skipUrl = "https://api.aniskip.com/v2/skip-times/$malId/$episode?types[]=op&types[]=ed&types[]=recap&types[]=mixed-op&episodeLength=$epLenSec"
             val skipBody = fetchJson(skipUrl) ?: continue
             val parsed = parseAniSkipJson(skipBody)
             if (parsed.isNotEmpty()) return parsed
