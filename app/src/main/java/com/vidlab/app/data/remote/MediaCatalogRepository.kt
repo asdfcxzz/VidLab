@@ -27,7 +27,7 @@ class MediaCatalogRepository(
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
-    private val cacheFile = File(context.filesDir, "catalog_cache_v240.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v241.json")
     private val manualBindingsFile = File(context.filesDir, "manual_bindings_v5.json")
 
     private val _ambiguousMatchesFlow = MutableSharedFlow<AmbiguousPrompt>(replay = 10)
@@ -40,7 +40,7 @@ class MediaCatalogRepository(
     init {
         try {
             context.filesDir.listFiles()?.forEach { f ->
-                if (f.name.startsWith("catalog_cache_") && f.name != "catalog_cache_v240.json") {
+                if (f.name.startsWith("catalog_cache_") && f.name != "catalog_cache_v241.json") {
                     f.delete()
                 }
             }
@@ -452,10 +452,7 @@ class MediaCatalogRepository(
     ): List<RenameOperation> {
         val plan = mutableListOf<RenameOperation>()
 
-        // If item failed to match the database and is not a manual override, skip auto-rename so user can resolve it manually
-        if (item.metadata == null && !isManualOverride) {
-            return emptyList()
-        }
+
 
         var cleanTitle = sanitizeFsName(customTitle ?: item.metadata?.title ?: item.title)
         cleanTitle = cleanTitle.replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()

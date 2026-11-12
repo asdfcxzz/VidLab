@@ -92,7 +92,31 @@ object FilenameSanitizer {
             if (sMatch != null) {
                 isSeries = true
                 season = sMatch.groupValues[1].toIntOrNull() ?: 1
+                val afterSeason = text.substring(sMatch.range.last + 1).trim()
+                val epAfterSeason = Regex("^(?:ep?|episode)?\\s*0*(\\d{1,3})\\b", RegexOption.IGNORE_CASE).find(afterSeason)
+                if (epAfterSeason != null) {
+                    episode = epAfterSeason.groupValues[1].toIntOrNull()
+                }
                 text = text.substring(0, sMatch.range.first)
+            } else {
+                val explicitEpMatch = Regex("(?i)\\b(?:ep|episode|e)\\s*0*(\\d{1,3})\\b").find(text)
+                if (explicitEpMatch != null) {
+                    isSeries = true
+                    episode = explicitEpMatch.groupValues[1].toIntOrNull()
+                    text = text.substring(0, explicitEpMatch.range.first)
+                } else {
+                    val trimmedForTrailing = text.trim()
+                    val trailingEpMatch = Regex("^(.{3,}?)\\s+0*(\\d{1,3})(?:\\s+v\\d+)?$", RegexOption.IGNORE_CASE).find(trimmedForTrailing)
+                    if (trailingEpMatch != null) {
+                        val candidateTitle = trailingEpMatch.groupValues[1].trim()
+                        val epNumVal = trailingEpMatch.groupValues[2].toIntOrNull()
+                        if (epNumVal != null && epNumVal in 1..999 && candidateTitle.length >= 3) {
+                            isSeries = true
+                            episode = epNumVal
+                            text = candidateTitle
+                        }
+                    }
+                }
             }
         }
 
