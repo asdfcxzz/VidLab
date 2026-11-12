@@ -348,16 +348,23 @@ object RcloneEngine {
             require(bin.exists()) { "Embedded rclone binary not found" }
             val runtimeConf = getRuntimeServeConfigFile(context)
 
+            val knownRemotes = parseRemotesFromConf(getConfigFile(context).readText()).map { it.first }.toSet()
+            val enabledRemotes = getConfiguredRemotes(context).filter { it.enabled }
+            val defaultRemote = enabledRemotes.firstOrNull()?.name ?: "vidlab_mount"
+
             fun toRemoteSpec(logicalPath: String): String {
                 val clean = logicalPath.trimStart('/')
                 val slashIdx = clean.indexOf('/')
-                return if (slashIdx > 0) {
-                    val remoteName = clean.substring(0, slashIdx)
-                    val relPath = clean.substring(slashIdx + 1)
-                    "$remoteName:$relPath"
-                } else {
-                    "vidlab_mount:$clean"
+                if (slashIdx > 0) {
+                    val firstSeg = clean.substring(0, slashIdx)
+                    if (firstSeg in knownRemotes) {
+                        val relPath = clean.substring(slashIdx + 1)
+                        return "$firstSeg:$relPath"
+                    }
                 }
+                val baseRemote = enabledRemotes.firstOrNull()
+                val sub = baseRemote?.rootSubpath?.trim('/')?.takeIf { it.isNotEmpty() }
+                return if (sub != null) "$defaultRemote:$sub/$clean" else "$defaultRemote:$clean"
             }
 
             val src = toRemoteSpec(oldLogicalPath)
