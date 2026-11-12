@@ -71,7 +71,17 @@ class MediaCatalogRepository(
         val clean = targetTitle.replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
         bindings[mediaKey] = StoredBinding(clean, mediaType, year, posterUrl, tmdbId)
         manualBindingsFile.writeText(json.encodeToString(bindings))
-        cacheFile.delete()
+        try {
+            if (cacheFile.exists()) {
+                val sections: List<MediaFeedSection> = json.decodeFromString(cacheFile.readText())
+                val updated = sections.map { sec ->
+                    sec.copy(items = sec.items.filterNot { it.id == mediaKey })
+                }.filter { it.items.isNotEmpty() }
+                cacheFile.writeText(json.encodeToString(updated))
+            }
+        } catch (_: Exception) {
+            cacheFile.delete()
+        }
     }
 
     fun loadCachedFeed(): List<MediaFeedSection> {
@@ -156,6 +166,7 @@ class MediaCatalogRepository(
     ): List<ScrapedMediaItem> = coroutineScope {
         val completedList = java.util.Collections.synchronizedList(mutableListOf<ScrapedMediaItem>())
         val manualBindings = getManualBindings()
+        val cachedItemsById = loadCachedFeed().flatMap { it.items }.associateBy { it.id }
         val seriesBuckets = mutableMapOf<String, MutableList<MediaFile>>()
         val movieFiles = mutableListOf<MediaFile>()
 
@@ -226,27 +237,48 @@ class MediaCatalogRepository(
                     cleanShowName = binding.title
                 }
 
-                val matchResult = runCatching {
-                    scraper.scrapeWithVerification(cleanShowName, true, forcedId, forcedType, forcedYear)
-                }.getOrDefault(MatchResult.NoMatch)
+                val prevCached = cachedItemsById[key]
+                val hasValidCachedMeta = prevCached?.metadata != null &&
+                    (binding == null || prevCached.title.equals(binding.title, ignoreCase = true))
 
-                var finalMeta: MediaMetadata? = null
+                var finalMeta: MediaMetadata? = if (hasValidCachedMeta) prevCached?.metadata else null
                 var finalEpisodesMap = emptyMap<String, ScrapedEpisode>()
 
-                when (matchResult) {
-                    is MatchResult.ConfidentMatch -> {
-                        finalMeta = matchResult.metadata
-                        finalEpisodesMap = matchResult.episodes
-                    }
-                    is MatchResult.Ambiguous -> {
-                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, cleanShowName, matchResult.candidates))
-                    }
-                    is MatchResult.NoMatch -> {
-                        val fallbackCandidates = scraper.searchMetadata(cleanShowName)
-                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, cleanShowName, fallbackCandidates))
+                if (!hasValidCachedMeta) {
+                    val matchResult = runCatching {
+                        scraper.scrapeWithVerification(cleanShowName, true, forcedId, forcedType, forcedYear)
+                    }.getOrDefault(MatchResult.NoMatch)
+
+                    when (matchResult) {
+                        is MatchResult.ConfidentMatch -> {
+                            finalMeta = matchResult.metadata
+                            finalEpisodesMap = matchResult.episodes
+                        }
+                        is MatchResult.Ambiguous -> {
+                            if (matchResult.candidates.isNotEmpty() && prevCached?.metadata == null) {
+                                _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, cleanShowName, matchResult.candidates))
+                            }
+                        }
+                        is MatchResult.NoMatch -> {
+                            // Never pop up an empty/broken dialog or overwrite valid metadata when network is weak
+                            if (prevCached?.metadata == null) {
+                                val fallbackCandidates = runCatching { scraper.searchMetadata(cleanShowName) }.getOrDefault(emptyList())
+                                if (fallbackCandidates.size > 1) {
+                                    _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, cleanShowName, fallbackCandidates))
+                                } else if (fallbackCandidates.size == 1) {
+                                    val only = fallbackCandidates.first()
+                                    if (only.title.equals(cleanShowName, ignoreCase = true)) {
+                                        finalMeta = MediaMetadata(only.title, only.posterUrl, only.posterUrl, only.year, listOf("TV Series"))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
+                if (finalMeta == null && prevCached?.metadata != null) {
+                    finalMeta = prevCached.metadata
+                }
                 if (forcedPoster != null && finalMeta == null) {
                     finalMeta = MediaMetadata(cleanShowName, forcedPoster, forcedPoster, forcedYear, listOf("TV Series"))
                 }
@@ -278,7 +310,13 @@ class MediaCatalogRepository(
                     }
 
                     val epKey = "S${sNum}E${epNum}"
-                    val scrapedEp = finalEpisodesMap[epKey]
+                    val cachedEp = prevCached?.seasons
+                        ?.firstOrNull { it.seasonNumber == sNum }
+                        ?.episodes
+                        ?.firstOrNull { it.episodeNumber == epNum }
+                    val scrapedEp = finalEpisodesMap[epKey] ?: cachedEp?.let {
+                        ScrapedEpisode(sNum, epNum, it.title.substringAfter(" • ", it.title), "", it.thumbnail)
+                    }
                     val formattedEp = String.format("S%02dE%02d", sNum, epNum)
 
                     // Always prefer the official database episode title over anything in the local filename
@@ -340,23 +378,43 @@ class MediaCatalogRepository(
                     queryName = binding.title
                 }
 
-                val matchResult = runCatching {
-                    scraper.scrapeWithVerification(queryName, false, forcedId, forcedType, forcedYear)
-                }.getOrDefault(MatchResult.NoMatch)
+                val prevCached = cachedItemsById[key]
+                val hasValidCachedMeta = prevCached?.metadata != null &&
+                    (binding == null || prevCached.title.equals(binding.title, ignoreCase = true))
 
-                var finalMeta: MediaMetadata? = null
+                var finalMeta: MediaMetadata? = if (hasValidCachedMeta) prevCached?.metadata else null
 
-                when (matchResult) {
-                    is MatchResult.ConfidentMatch -> finalMeta = matchResult.metadata
-                    is MatchResult.Ambiguous -> {
-                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, matchResult.candidates))
-                    }
-                    is MatchResult.NoMatch -> {
-                        val fallbackCandidates = scraper.searchMetadata(queryName)
-                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, fallbackCandidates))
+                if (!hasValidCachedMeta) {
+                    val matchResult = runCatching {
+                        scraper.scrapeWithVerification(queryName, false, forcedId, forcedType, forcedYear)
+                    }.getOrDefault(MatchResult.NoMatch)
+
+                    when (matchResult) {
+                        is MatchResult.ConfidentMatch -> finalMeta = matchResult.metadata
+                        is MatchResult.Ambiguous -> {
+                            if (matchResult.candidates.isNotEmpty() && prevCached?.metadata == null) {
+                                _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, matchResult.candidates))
+                            }
+                        }
+                        is MatchResult.NoMatch -> {
+                            if (prevCached?.metadata == null) {
+                                val fallbackCandidates = runCatching { scraper.searchMetadata(queryName) }.getOrDefault(emptyList())
+                                if (fallbackCandidates.size > 1) {
+                                    _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, fallbackCandidates))
+                                } else if (fallbackCandidates.size == 1) {
+                                    val only = fallbackCandidates.first()
+                                    if (only.title.equals(queryName, ignoreCase = true)) {
+                                        finalMeta = MediaMetadata(only.title, only.posterUrl, only.posterUrl, only.year, listOf("Movie"))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
+                if (finalMeta == null && prevCached?.metadata != null) {
+                    finalMeta = prevCached.metadata
+                }
                 if (forcedPoster != null && finalMeta == null) {
                     finalMeta = MediaMetadata(queryName, forcedPoster, forcedPoster, forcedYear, listOf("Movie"))
                 }

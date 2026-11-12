@@ -26,6 +26,10 @@ fun AmbiguousMatchDialog(
     onSelectMatch: (TmdbSearchResult) -> Unit,
     onDismiss: () -> Unit
 ) {
+    if (prompt.candidates.isEmpty()) {
+        androidx.compose.runtime.LaunchedEffect(prompt) { onDismiss() }
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
