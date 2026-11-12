@@ -134,6 +134,16 @@ class PlayerActivity : ComponentActivity() {
         if (hasFocus) hideSystemBars()
     }
 
+    override fun onPause() {
+        super.onPause()
+        exoPlayer?.pause()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        exoPlayer?.pause()
+    }
+
     override fun onDestroy() {
         exoPlayer?.release()
         exoPlayer = null
@@ -305,6 +315,16 @@ private fun ModernPlayerScreen(
                     this.player = player
                     useController = false
                     keepScreenOn = true
+                    subtitleView?.let { sub ->
+                        (sub.parent as? android.view.ViewGroup)?.removeView(sub)
+                        addView(
+                            sub,
+                            android.widget.FrameLayout.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                    }
                 }
             },
             update = { view ->
@@ -323,17 +343,6 @@ private fun ModernPlayerScreen(
                     contentFrame.translationY = 0f
                 }
                 view.subtitleView?.let { sub ->
-                    val invScale = 1f / customScale.coerceAtLeast(1f)
-                    sub.pivotX = sub.width / 2f
-                    sub.pivotY = sub.height / 2f
-                    sub.scaleX = invScale
-                    sub.scaleY = invScale
-
-                    val screenH = view.height.toFloat().coerceAtLeast(1f)
-                    val scaledSubH = (sub.height.toFloat() * customScale).coerceAtLeast(screenH)
-                    val offscreenBottom = ((scaledSubH - screenH) / (2f * scaledSubH)).coerceAtLeast(0f)
-                    val desiredBottom = (playerPrefs.subtitleBottomPaddingPct / 100f) * (screenH / scaledSubH)
-
                     val fgColor = when (playerPrefs.subtitleColorIndex) {
                         1 -> android.graphics.Color.YELLOW
                         2 -> android.graphics.Color.CYAN
@@ -346,7 +355,7 @@ private fun ModernPlayerScreen(
                     sub.setApplyEmbeddedFontSizes(false)
                     sub.setStyle(CaptionStyleCompat(fgColor, bgColor, android.graphics.Color.TRANSPARENT, edgeType, android.graphics.Color.BLACK, Typeface.DEFAULT_BOLD))
                     sub.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, playerPrefs.subtitleFontSizeSp)
-                    sub.setBottomPaddingFraction((offscreenBottom + desiredBottom).coerceIn(0.01f, 0.45f))
+                    sub.setBottomPaddingFraction(playerPrefs.subtitleBottomPaddingPct / 100f)
                 }
             },
             modifier = Modifier.fillMaxSize()
