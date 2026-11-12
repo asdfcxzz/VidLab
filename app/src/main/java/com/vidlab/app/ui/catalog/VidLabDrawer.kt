@@ -55,6 +55,7 @@ fun VidLabDrawerContent(
     val playerPrefs = remember { PlayerPreferences(context) }
     val simklManager = remember { SimklManager(context) }
     var useRclone by remember { mutableStateOf(RcloneEngine.isRcloneModeEnabled(context)) }
+    var webDavUrl by remember { mutableStateOf(RcloneEngine.getWebDavBaseUrl(context)) }
     var rcloneRemotes by remember { mutableStateOf(RcloneEngine.getConfiguredRemotes(context)) }
     var showPasteConfDialog by remember { mutableStateOf(false) }
     var pasteConfText by remember { mutableStateOf("") }
@@ -273,7 +274,7 @@ fun VidLabDrawerContent(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Text("RCLONE CLOUD REMOTES", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("MEDIA SOURCE MODE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
             Card(
@@ -281,114 +282,188 @@ fun VidLabDrawerContent(
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Distinct 2-Mode Switcher: Built-in Rclone vs WebDAV Mode
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0A0E17))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Built-in Rclone Engine", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Surface(
+                            color = if (useRclone) AccentViolet else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    useRclone = true
+                                    RcloneEngine.setRcloneModeEnabled(context, true)
+                                    RcloneEngine.restartServeIfNeeded(context)
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                Text(
+                                    "Rclone Mode",
+                                    color = if (useRclone) Color(0xFF0A0E17) else Color(0xFF94A3B8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = if (!useRclone) AccentViolet else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    useRclone = false
+                                    RcloneEngine.setRcloneModeEnabled(context, false)
+                                    RcloneEngine.stopServer()
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                Text(
+                                    "WebDAV Mode",
+                                    color = if (!useRclone) Color(0xFF0A0E17) else Color(0xFF94A3B8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (useRclone) {
+                        Text(
+                            "Embedded Rclone scans & streams your chosen remotes directly without Termux.",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = { pickConfLauncher.launch(arrayOf("*/*")) },
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Import rclone.conf", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val candidates = listOf(
+                                        File("/storage/emulated/0/Download/rclone.conf"),
+                                        File("/storage/emulated/0/rclone.conf")
+                                    )
+                                    val found = candidates.firstOrNull { it.exists() && it.canRead() }
+                                    if (found != null) {
+                                        RcloneEngine.importConfigText(context, found.readText()).onSuccess { list ->
+                                            rcloneRemotes = list
+                                            useRclone = true
+                                            Toast.makeText(context, "Loaded ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        pasteConfText = if (RcloneEngine.getConfigFile(context).exists()) RcloneEngine.getConfigFile(context).readText() else ""
+                                        showPasteConfDialog = true
+                                    }
+                                },
+                                border = BorderStroke(1.dp, BorderPurple),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Paste / Auto-Find", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        if (rcloneRemotes.isNotEmpty()) {
+                            HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+                            Text("Select Remotes to Scan:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            rcloneRemotes.forEachIndexed { idx, remote ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (remote.enabled) BorderPurple.copy(alpha = 0.55f) else Color.Transparent)
+                                        .clickable {
+                                            val updated = rcloneRemotes.toMutableList()
+                                            updated[idx] = remote.copy(enabled = !remote.enabled)
+                                            rcloneRemotes = updated
+                                            RcloneEngine.saveConfiguredRemotes(context, updated)
+                                            RcloneEngine.restartServeIfNeeded(context)
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("${remote.name}:", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("type = ${remote.type}", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                    }
+                                    Checkbox(
+                                        checked = remote.enabled,
+                                        onCheckedChange = { checked ->
+                                            val updated = rcloneRemotes.toMutableList()
+                                            updated[idx] = remote.copy(enabled = checked)
+                                            rcloneRemotes = updated
+                                            RcloneEngine.saveConfiguredRemotes(context, updated)
+                                            RcloneEngine.restartServeIfNeeded(context)
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = AccentViolet,
+                                            checkmarkColor = Color(0xFF0A0E17),
+                                            uncheckedColor = Color(0xFF94A3B8)
+                                        )
+                                    )
+                                }
+                            }
+                        } else {
                             Text(
-                                if (useRclone) "Scans & streams directly (no Termux needed)" else "Using external WebDAV (127.0.0.1:8080)",
+                                "No rclone.conf imported yet. Import or paste your config above.",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 11.sp
                             )
                         }
-                        Switch(
-                            checked = useRclone,
-                            onCheckedChange = { enabled ->
-                                useRclone = enabled
-                                RcloneEngine.setRcloneModeEnabled(context, enabled)
-                                RcloneEngine.restartServeIfNeeded(context)
+                    } else {
+                        Text(
+                            "Connect to an external WebDAV server (e.g., Termux rclone serve webdav or OpenList).",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp
+                        )
+                        OutlinedTextField(
+                            value = webDavUrl,
+                            onValueChange = {
+                                webDavUrl = it
+                                RcloneEngine.setWebDavBaseUrl(context, it)
                             },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                            singleLine = true,
+                            label = { Text("WebDAV Server URL", color = Color(0xFF94A3B8), fontSize = 11.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AccentViolet,
+                                unfocusedBorderColor = BorderPurple
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = { pickConfLauncher.launch(arrayOf("*/*")) },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Import rclone.conf", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                val candidates = listOf(
-                                    File("/storage/emulated/0/Download/rclone.conf"),
-                                    File("/storage/emulated/0/rclone.conf")
-                                )
-                                val found = candidates.firstOrNull { it.exists() && it.canRead() }
-                                if (found != null) {
-                                    RcloneEngine.importConfigText(context, found.readText()).onSuccess { list ->
-                                        rcloneRemotes = list
-                                        useRclone = true
-                                        Toast.makeText(context, "Loaded ${list.size} remote(s) from ${found.name}", Toast.LENGTH_SHORT).show()
-                                    }
-                                } else {
-                                    pasteConfText = if (RcloneEngine.getConfigFile(context).exists()) RcloneEngine.getConfigFile(context).readText() else ""
-                                    showPasteConfDialog = true
-                                }
-                            },
-                            border = BorderStroke(1.dp, BorderPurple),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Paste / Auto-Find", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    if (rcloneRemotes.isNotEmpty()) {
-                        HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-                        Text("Select Remotes to Scan:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        rcloneRemotes.forEachIndexed { idx, remote ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (remote.enabled) BorderPurple.copy(alpha = 0.55f) else Color.Transparent)
-                                    .clickable {
-                                        val updated = rcloneRemotes.toMutableList()
-                                        updated[idx] = remote.copy(enabled = !remote.enabled)
-                                        rcloneRemotes = updated
-                                        RcloneEngine.saveConfiguredRemotes(context, updated)
-                                        RcloneEngine.restartServeIfNeeded(context)
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("${remote.name}:", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("type = ${remote.type}", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                                }
-                                Checkbox(
-                                    checked = remote.enabled,
-                                    onCheckedChange = { checked ->
-                                        val updated = rcloneRemotes.toMutableList()
-                                        updated[idx] = remote.copy(enabled = checked)
-                                        rcloneRemotes = updated
-                                        RcloneEngine.saveConfiguredRemotes(context, updated)
-                                        RcloneEngine.restartServeIfNeeded(context)
-                                    },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = AccentViolet,
-                                        checkmarkColor = Color(0xFF0A0E17),
-                                        uncheckedColor = Color(0xFF94A3B8)
-                                    )
-                                )
-                            }
-                        }
-                    } else {
+                    Button(
+                        onClick = onRescanClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().height(40.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            "No rclone.conf imported yet. Import your rclone.conf to scan remotes directly.",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
+                            if (useRclone) "Scan Selected Rclone Remotes" else "Scan WebDAV Server",
+                            color = Color(0xFF0A0E17),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }

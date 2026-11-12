@@ -331,6 +331,51 @@ fun MediaCenterScreen(
                     }
                 }
             }
+        if (sections.isEmpty() && !isSearchActive) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = AccentViolet, strokeWidth = 3.dp)
+                    Text(
+                        "Scanning media library...",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Fetching files & matching metadata",
+                        color = SecondaryText,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Text(
+                        if (!errorMessage.isNullOrBlank()) "Scan Error" else "No Media Loaded",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        errorMessage ?: "Open the menu to select Rclone remotes or WebDAV mode, then tap Rescan.",
+                        color = if (!errorMessage.isNullOrBlank()) Color(0xFFFF8A80) else SecondaryText,
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Button(
+                        onClick = onRescan,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Rescan Now", color = Color(0xFF0A0E17), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // Subtle top gradient scrim so floating Hamburger & Search buttons stay crisp over bright posters
         Box(
             modifier = Modifier

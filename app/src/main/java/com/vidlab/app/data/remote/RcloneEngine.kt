@@ -59,6 +59,17 @@ object RcloneEngine {
         return File(context.filesDir, "rclone_serve.conf")
     }
 
+    fun getWebDavBaseUrl(context: Context): String {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("webdav_base_url", "http://127.0.0.1:8080")
+            ?.trimEnd('/') ?: "http://127.0.0.1:8080"
+    }
+
+    fun setWebDavBaseUrl(context: Context, url: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString("webdav_base_url", url.trim().trimEnd('/')).apply()
+    }
+
     fun isRcloneModeEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getBoolean(KEY_USE_RCLONE, getConfigFile(context).exists())
@@ -207,9 +218,10 @@ object RcloneEngine {
                     "--no-mimetype",
                     target
                 )
-                val proc = ProcessBuilder(cmd)
-                    .redirectErrorStream(false)
-                    .start()
+                val pb = ProcessBuilder(cmd).redirectErrorStream(false)
+                pb.environment()["SSL_CERT_DIR"] = "/system/etc/security/cacerts"
+                pb.environment()["HOME"] = context.filesDir.absolutePath
+                val proc = pb.start()
 
                 val stdout = proc.inputStream.bufferedReader().use { it.readText() }
                 val stderr = proc.errorStream.bufferedReader().use { it.readText() }
@@ -290,9 +302,10 @@ object RcloneEngine {
             "--no-modtime"
         )
 
-        val proc = ProcessBuilder(cmd)
-            .redirectErrorStream(true)
-            .start()
+        val servePb = ProcessBuilder(cmd).redirectErrorStream(true)
+        servePb.environment()["SSL_CERT_DIR"] = "/system/etc/security/cacerts"
+        servePb.environment()["HOME"] = context.filesDir.absolutePath
+        val proc = servePb.start()
         serverProcess = proc
         activeServedConfigSig = sig
 
@@ -334,7 +347,7 @@ object RcloneEngine {
         val base = if (isRcloneModeEnabled(context) && hasValidConfig(context)) {
             STREAM_BASE_URL
         } else {
-            "http://127.0.0.1:8080"
+            getWebDavBaseUrl(context)
         }
         val encodedPath = logicalPath.split('/').joinToString("/") { seg ->
             if (seg.isEmpty()) "" else URLEncoder.encode(seg, "UTF-8").replace("+", "%20")

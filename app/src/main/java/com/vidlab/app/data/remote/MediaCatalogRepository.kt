@@ -23,7 +23,7 @@ data class StoredBinding(
 
 class MediaCatalogRepository(
     private val context: Context,
-    val webDavClient: WebDavClient = WebDavClient(if (RcloneEngine.isRcloneModeEnabled(context)) RcloneEngine.STREAM_BASE_URL else "http://127.0.0.1:8080"),
+    val webDavClient: WebDavClient = WebDavClient(if (RcloneEngine.isRcloneModeEnabled(context)) RcloneEngine.STREAM_BASE_URL else RcloneEngine.getWebDavBaseUrl(context)),
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
@@ -124,7 +124,8 @@ class MediaCatalogRepository(
                     if (norm in visited) continue
                     visited.add(norm)
 
-                    val entries = webDavClient.listDirectory(norm).getOrDefault(emptyList())
+                    val activeDav = WebDavClient(RcloneEngine.getWebDavBaseUrl(context))
+                    val entries = activeDav.listDirectory(norm).getOrThrow()
                     for (entry in entries) {
                         val entryNorm = "/" + entry.path.trim('/')
                         if (entry.isDirectory) {
