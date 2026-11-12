@@ -50,7 +50,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
+import android.graphics.Typeface
+import android.util.TypedValue
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -300,15 +304,31 @@ private fun ModernPlayerScreen(
             },
             update = { view ->
                 view.resizeMode = resizeModes[resizeModeIndex].first
+                view.videoSurfaceView?.let { s ->
+                    s.pivotX = s.width / 2f
+                    s.pivotY = s.height / 2f
+                    s.scaleX = customScale
+                    s.scaleY = customScale
+                    s.translationX = 0f
+                    s.translationY = 0f
+                }
+                view.subtitleView?.let { sub ->
+                    val fgColor = when (playerPrefs.subtitleColorIndex) {
+                        1 -> android.graphics.Color.YELLOW
+                        2 -> android.graphics.Color.CYAN
+                        3 -> android.graphics.Color.GREEN
+                        else -> android.graphics.Color.WHITE
+                    }
+                    val bgColor = if (playerPrefs.subtitleBgBox) android.graphics.Color.argb(165, 0, 0, 0) else android.graphics.Color.TRANSPARENT
+                    val edgeType = if (playerPrefs.subtitleBgBox) CaptionStyleCompat.EDGE_TYPE_NONE else CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                    sub.setApplyEmbeddedStyles(false)
+                    sub.setApplyEmbeddedFontSizes(false)
+                    sub.setStyle(CaptionStyleCompat(fgColor, bgColor, android.graphics.Color.TRANSPARENT, edgeType, android.graphics.Color.BLACK, Typeface.DEFAULT_BOLD))
+                    sub.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, playerPrefs.subtitleFontSizeSp)
+                    sub.setBottomPaddingFraction(playerPrefs.subtitleBottomPaddingPct / 100f)
+                }
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = customScale,
-                    scaleY = customScale,
-                    translationX = customOffset.x,
-                    translationY = customOffset.y
-                )
+            modifier = Modifier.fillMaxSize()
         )
 
         Box(
@@ -389,14 +409,10 @@ private fun ModernPlayerScreen(
                 }
                 .pointerInput(isLocked) {
                     if (!isLocked) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            if (zoom != 1f || customScale > 1.01f) {
-                                val next = (customScale * zoom).coerceIn(1f, 3.0f)
-                                customScale = next
-                                customOffset = if (next <= 1.01f) Offset.Zero else Offset(
-                                    (customOffset.x + pan.x).coerceIn(-size.width * 0.6f, size.width * 0.6f),
-                                    (customOffset.y + pan.y).coerceIn(-size.height * 0.6f, size.height * 0.6f)
-                                )
+                        detectTransformGestures { _, _, zoom, _ ->
+                            if (zoom != 1f) {
+                                customScale = (customScale * zoom).coerceIn(1f, 3.0f)
+                                customOffset = Offset.Zero
                                 gestureOverlayText = "Zoom: ${(customScale * 100).toInt()}%"
                             }
                         }
@@ -500,9 +516,9 @@ private fun ModernPlayerScreen(
             visible = controlsVisible && !isLocked,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = customScale, scaleY = customScale, translationX = customOffset.x, translationY = customOffset.y)
+            modifier = Modifier.fillMaxSize()
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -24,4 +24,21 @@ class PlayerPreferences(context: Context) {
     var defaultResizeMode: Int
         get() = prefs.getInt("default_resize_mode", 0)
         set(value) = prefs.edit().putInt("default_resize_mode", value).apply()
+
+    // Subtitle appearance settings
+    var subtitleFontSizeSp: Float
+        get() = prefs.getFloat("subtitle_font_size_sp", 18f)
+        set(value) = prefs.edit().putFloat("subtitle_font_size_sp", value).apply()
+
+    var subtitleColorIndex: Int
+        get() = prefs.getInt("subtitle_color_index", 0) // 0=White, 1=Yellow, 2=Cyan, 3=Green
+        set(value) = prefs.edit().putInt("subtitle_color_index", value).apply()
+
+    var subtitleBgBox: Boolean
+        get() = prefs.getBoolean("subtitle_bg_box", true)
+        set(value) = prefs.edit().putBoolean("subtitle_bg_box", value).apply()
+
+    var subtitleBottomPaddingPct: Int
+        get() = prefs.getInt("subtitle_bottom_padding_pct", 8) // 5%, 8%, 12%, 16%
+        set(value) = prefs.edit().putInt("subtitle_bottom_padding_pct", value).apply()
 }

@@ -43,9 +43,17 @@ fun VidLabDrawerContent(
     var autoEnglish by remember { mutableStateOf(playerPrefs.autoEnglishTracks) }
     var preferFfmpeg by remember { mutableStateOf(playerPrefs.preferFfmpegAudio) }
 
+    var subSize by remember { mutableFloatStateOf(playerPrefs.subtitleFontSizeSp) }
+    var subColorIdx by remember { mutableIntStateOf(playerPrefs.subtitleColorIndex) }
+    var subBgBox by remember { mutableStateOf(playerPrefs.subtitleBgBox) }
+    var subBottomPct by remember { mutableIntStateOf(playerPrefs.subtitleBottomPaddingPct) }
+
     val speedOptions = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
     val seekOptions = listOf(5, 10, 15, 30)
     val aspectLabels = listOf("Fit", "Zoom", "Fill")
+    val subSizeOptions = listOf(14f, 18f, 22f, 26f)
+    val subColorLabels = listOf("White", "Yellow", "Cyan", "Green")
+    val subMarginOptions = listOf(5, 8, 12, 16)
 
     ModalDrawerSheet(
         drawerContainerColor = DeepPurpleBg,
@@ -115,7 +123,6 @@ fun VidLabDrawerContent(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Default Speed Selector
                     Column {
                         Text("Default Playback Speed", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -130,19 +137,12 @@ fun VidLabDrawerContent(
                                         playerPrefs.defaultSpeed = spd
                                     }
                                 ) {
-                                    Text(
-                                        text = "${spd}x",
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                    )
+                                    Text("${spd}x", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
                                 }
                             }
                         }
                     }
 
-                    // Double-Tap Seek Interval
                     Column {
                         Text("Double-Tap Seek Step", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -157,19 +157,12 @@ fun VidLabDrawerContent(
                                         playerPrefs.seekStepSeconds = sec
                                     }
                                 ) {
-                                    Text(
-                                        text = "${sec}s",
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
+                                    Text("${sec}s", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                                 }
                             }
                         }
                     }
 
-                    // Default Aspect Ratio
                     Column {
                         Text("Default Aspect Ratio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -184,13 +177,7 @@ fun VidLabDrawerContent(
                                         playerPrefs.defaultResizeMode = idx
                                     }
                                 ) {
-                                    Text(
-                                        text = label,
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                                    )
+                                    Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                                 }
                             }
                         }
@@ -198,7 +185,6 @@ fun VidLabDrawerContent(
 
                     HorizontalDivider(color = BorderPurple, thickness = 1.dp)
 
-                    // Auto English Audio & Subs
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -218,7 +204,6 @@ fun VidLabDrawerContent(
                         )
                     }
 
-                    // Prioritize FFmpeg Audio Decoder
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -233,6 +218,100 @@ fun VidLabDrawerContent(
                             onCheckedChange = {
                                 preferFfmpeg = it
                                 playerPrefs.preferFfmpegAudio = it
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("SUBTITLE SETTINGS", color = Color(0xFF9E95B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column {
+                        Text("Subtitle Text Size", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            subSizeOptions.forEach { sz ->
+                                val selected = subSize == sz
+                                Surface(
+                                    color = if (selected) AccentViolet else BorderPurple,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable {
+                                        subSize = sz
+                                        playerPrefs.subtitleFontSizeSp = sz
+                                    }
+                                ) {
+                                    Text("${sz.toInt()}sp", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Column {
+                        Text("Subtitle Color", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            subColorLabels.forEachIndexed { idx, label ->
+                                val selected = subColorIdx == idx
+                                Surface(
+                                    color = if (selected) AccentViolet else BorderPurple,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable {
+                                        subColorIdx = idx
+                                        playerPrefs.subtitleColorIndex = idx
+                                    }
+                                ) {
+                                    Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Column {
+                        Text("Bottom Margin", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            subMarginOptions.forEach { pct ->
+                                val selected = subBottomPct == pct
+                                Surface(
+                                    color = if (selected) AccentViolet else BorderPurple,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable {
+                                        subBottomPct = pct
+                                        playerPrefs.subtitleBottomPaddingPct = pct
+                                    }
+                                ) {
+                                    Text("${pct}%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Dark Background Box", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("Improve readability on bright scenes", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = subBgBox,
+                            onCheckedChange = {
+                                subBgBox = it
+                                playerPrefs.subtitleBgBox = it
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
                         )
