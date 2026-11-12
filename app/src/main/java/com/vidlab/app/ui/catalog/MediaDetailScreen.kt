@@ -513,21 +513,74 @@ fun MediaDetailScreen(
         }
 
         if (showFileDetailsDialog) {
+            val allFiles = remember(item) {
+                val eps = item.seasons
+                    .sortedBy { it.seasonNumber }
+                    .flatMap { s -> s.episodes.sortedBy { it.episodeNumber }.map { it.file } }
+                if (eps.isNotEmpty()) eps else listOf(item.primaryFile)
+            }
+            val totalBytes = remember(allFiles) { allFiles.sumOf { it.size } }
+            val totalSizeFormatted = remember(totalBytes) {
+                val gb = totalBytes / (1024.0 * 1024.0 * 1024.0)
+                if (gb >= 1.0) String.format("%.2f GB", gb)
+                else String.format("%.2f MB", totalBytes / (1024.0 * 1024.0))
+            }
+            val rootFolder = remember(allFiles) {
+                val firstDir = allFiles.firstOrNull()?.path?.substringBeforeLast('/', "") ?: ""
+                if (item.seasons.size > 1) firstDir.substringBeforeLast('/', firstDir) else firstDir
+            }
+
             AlertDialog(
                 onDismissRequest = { showFileDetailsDialog = false },
                 containerColor = SurfaceDark,
                 title = { Text("Storage & File Info", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Title: ${item.title}", color = Color.White, fontSize = 13.sp)
-                        Text("Path: ${item.primaryFile.path}", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                        val sizeMb = String.format("%.2f MB", item.primaryFile.size / 1024.0 / 1024.0)
-                        Text("Primary File Size: $sizeMb", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Title: ${item.title}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        if (rootFolder.isNotBlank()) {
+                            Text("Folder: $rootFolder", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                        }
+                        if (allFiles.size > 1) {
+                            Text(
+                                "Summary: ${item.seasons.size} Season(s) • ${allFiles.size} Episodes • $totalSizeFormatted Total",
+                                color = AccentViolet,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            HorizontalDivider(color = BorderPurple, thickness = 0.8.dp)
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(allFiles, key = { it.path }) { f ->
+                                    val fSizeStr = if (f.size >= 1024L * 1024L * 1024L) {
+                                        String.format("%.2f GB", f.size / (1024.0 * 1024.0 * 1024.0))
+                                    } else {
+                                        String.format("%.2f MB", f.size / (1024.0 * 1024.0))
+                                    }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(DeepPurpleBg)
+                                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                                    ) {
+                                        Text(f.name, color = Color.White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(fSizeStr, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            Text("Path: ${item.primaryFile.path}", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                            Text("File Size: $totalSizeFormatted", color = AccentViolet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showFileDetailsDialog = false }) {
-                        Text("Close", color = AccentViolet)
+                        Text("Close", color = AccentViolet, fontWeight = FontWeight.Bold)
                     }
                 }
             )

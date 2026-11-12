@@ -262,12 +262,65 @@ private fun ModernPlayerScreen(
     var showAudioDialog by remember { mutableStateOf(false) }
     var showSubtitleDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var gestureOverlayText by remember { mutableStateOf<String?>(null) }
+    var externalSubLabel by remember { mutableStateOf<String?>(null) }
+
+    val externalSubLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            val displayName = runCatching {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && nameIdx >= 0) cursor.getString(nameIdx) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment ?: "External Subtitle"
+
+            val lower = displayName.lowercase()
+            val mimeType = when {
+                lower.endsWith(".ass") || lower.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+                lower.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+                else -> MimeTypes.APPLICATION_SUBRIP
+            }
+
+            val subConfig = MediaItem.SubtitleConfiguration.Builder(uri)
+                .setMimeType(mimeType)
+                .setLanguage("en")
+                .setLabel(displayName)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)
+                .build()
+
+            val resumePos = player.currentPosition.coerceAtLeast(0L)
+            val wasPlaying = player.playWhenReady
+            val updatedItem = MediaItem.Builder()
+                .setUri(Uri.parse(activeStreamUrl))
+                .setSubtitleConfigurations(listOf(subConfig))
+                .build()
+
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .build()
+
+            player.setMediaItem(updatedItem, resumePos)
+            player.prepare()
+            player.playWhenReady = wasPlaying
+            externalSubLabel = displayName
+            gestureOverlayText = "Loaded: $displayName"
+        }
+    }
 
     var audioTracks by remember { mutableStateOf<List<TrackOption>>(emptyList()) }
     var subtitleTracks by remember { mutableStateOf<List<TrackOption>>(emptyList()) }
 
     var seekFeedbackText by remember { mutableStateOf<String?>(null) }
-    var gestureOverlayText by remember { mutableStateOf<String?>(null) }
     var brightnessLevel by remember {
         mutableFloatStateOf(
             activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
@@ -1138,46 +1191,84 @@ private fun ModernPlayerScreen(
                 containerColor = Color(0xFF131A29),
                 title = { Text("Select Subtitles", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(subtitleTracks) { track ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(
+                            onClick = {
+                                showSubtitleDialog = false
+                                externalSubLauncher.launch(arrayOf("*/*"))
+                            },
+                            color = Color(0xFF8B85CF),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        if (track.id == "sub_off") {
-                                            player.trackSelectionParameters = player.trackSelectionParameters
-                                                .buildUpon()
-                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                                                .build()
-                                        } else {
-                                            track.group?.let { grp ->
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Add External Subtitle (.srt / .ass / .vtt)",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        if (externalSubLabel != null) {
+                            Text(
+                                text = "External: $externalSubLabel",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 240.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(subtitleTracks) { track ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (track.id == "sub_off") {
                                                 player.trackSelectionParameters = player.trackSelectionParameters
                                                     .buildUpon()
-                                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                                    .setOverrideForType(TrackSelectionOverride(grp.mediaTrackGroup, track.trackIndex))
+                                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                                                     .build()
+                                            } else {
+                                                track.group?.let { grp ->
+                                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                                        .buildUpon()
+                                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                                        .setOverrideForType(TrackSelectionOverride(grp.mediaTrackGroup, track.trackIndex))
+                                                        .build()
+                                                }
                                             }
+                                            showSubtitleDialog = false
                                         }
-                                        showSubtitleDialog = false
-                                    }
-                                    .padding(vertical = 8.dp, horizontal = 6.dp)
-                            ) {
-                                RadioButton(
-                                    selected = track.isSelected,
-                                    onClick = null,
-                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B85CF))
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(track.label, color = Color.White, fontSize = 14.sp)
+                                        .padding(vertical = 8.dp, horizontal = 6.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = track.isSelected,
+                                        onClick = null,
+                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B85CF))
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(track.label, color = Color.White, fontSize = 14.sp)
+                                }
                             }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showSubtitleDialog = false }) {
-                        Text("Close", color = Color(0xFF8B85CF))
+                        Text("Close", color = Color(0xFF8B85CF), fontWeight = FontWeight.Bold)
                     }
                 }
             )
