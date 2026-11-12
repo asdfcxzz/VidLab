@@ -41,57 +41,76 @@ object SkipSegmentManager {
         }.getOrNull()
     }
 
+    private fun postJson(urlStr: String, body: String): String? {
+        return runCatching {
+            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "application/json")
+                connectTimeout = 8_000
+                readTimeout = 8_000
+                doOutput = true
+            }
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } else null
+        }.getOrNull()
+    }
+
     suspend fun fetchSegmentsForMedia(
         rawTitleOrFilename: String,
         durationMs: Long,
         streamUrl: String = ""
     ): List<SkipSegment> = withContext(Dispatchers.IO) {
-        val results = mutableListOf<SkipSegment>()
+        val mkvChapters = if (streamUrl.startsWith("http") && streamUrl.lowercase().substringBefore("?").endsWith(".mkv")) {
+            parseMkvChaptersFromStream(streamUrl, durationMs)
+        } else emptyList()
 
-        // 1. Parse embedded MKV chapters directly from the WebDAV stream (works offline & for brand-new 2025/2026 releases)
-        if (streamUrl.startsWith("http") && streamUrl.lowercase().substringBefore("?").endsWith(".mkv")) {
-            results += parseMkvChaptersFromStream(streamUrl, durationMs)
+        val cleanName = rawTitleOrFilename
+            .substringAfterLast("/")
+            .substringBeforeLast(".")
+            .replace('.', ' ')
+            .replace('_', ' ')
+            .trim()
+
+        val epRegex = Regex("""(?i)(.*?)\s*[-–]?\s*S(\d{1,2})E(\d{1,3})""")
+        val epMatch = epRegex.find(cleanName)
+
+        val onlineSegments = if (epMatch != null) {
+            val showTitle = epMatch.groupValues[1].trim()
+            val seasonNum = epMatch.groupValues[2].toIntOrNull() ?: 1
+            val episodeNum = epMatch.groupValues[3].toIntOrNull() ?: 1
+
+            // Query AniSkip (via AniList MAL ID + Jikan fallback) AND TheIntroDB
+            val aniSegments = fetchFromAniSkip(showTitle, seasonNum, episodeNum, durationMs)
+            if (aniSegments.isNotEmpty()) aniSegments
+            else fetchFromIntroDbTv(showTitle, seasonNum, episodeNum)
+        } else {
+            val yearMatch = Regex("""\((\d{4})\)""").find(cleanName)
+            val year = yearMatch?.groupValues?.get(1)
+            val movieTitle = cleanName.replace(Regex("""\(\d{4}\).*"""), "").trim()
+            fetchFromIntroDbMovie(movieTitle, year)
         }
 
-        // If MKV already gave us Intro or Outro chapters, keep them and skip slower network lookups unless none are skippable
-        val hasExplicitIntro = results.any { it.type == SegmentType.INTRO }
-        if (!hasExplicitIntro) {
-            val cleanName = rawTitleOrFilename
-                .substringAfterLast("/")
-                .substringBeforeLast(".")
-                .replace('.', ' ')
-                .replace('_', ' ')
-                .trim()
-
-            val epRegex = Regex("""(?i)(.*?)\s*[-–]?\s*S(\d{1,2})E(\d{1,3})""")
-            val epMatch = epRegex.find(cleanName)
-
-            if (epMatch != null) {
-                val showTitle = epMatch.groupValues[1].trim()
-                val seasonNum = epMatch.groupValues[2].toIntOrNull() ?: 1
-                val episodeNum = epMatch.groupValues[3].toIntOrNull() ?: 1
-
-                val online = fetchFromIntroDbTv(showTitle, seasonNum, episodeNum)
-                    .ifEmpty { fetchFromAniSkip(showTitle, episodeNum, durationMs) }
-                results += online
-            } else {
-                val yearMatch = Regex("""\((\d{4})\)""").find(cleanName)
-                val year = yearMatch?.groupValues?.get(1)
-                val movieTitle = cleanName.replace(Regex("""\(\d{4}\).*"""), "").trim()
-                results += fetchFromIntroDbMovie(movieTitle, year)
-            }
+        // Merge online skippable segments (precise OP/ED) with MKV chapter dividers
+        val combined = if (onlineSegments.isNotEmpty()) {
+            val chapterDividers = mkvChapters.filter { it.type == SegmentType.CHAPTER }
+            onlineSegments + chapterDividers
+        } else {
+            mkvChapters
         }
 
-        results
+        combined
             .filter { it.endMs > it.startMs + 1500L }
-            .distinctBy { "${it.type}_${it.startMs / 1000L}" }
+            .distinctBy { "${it.type}_${it.startMs / 2000L}" }
             .sortedBy { it.startMs }
     }
 
-    // Lightweight EBML scanner for MKV ChapterAtom (0xB6) -> ChapterTimeStart (0x91), ChapterTimeEnd (0x92), ChapString (0x85)
     private fun parseMkvChaptersFromStream(streamUrl: String, durationMs: Long): List<SkipSegment> {
         return runCatching {
-            val headBytes = fetchRangeBytes(streamUrl, "bytes=0-262143") ?: ByteArray(0)
+            val headBytes = fetchRangeBytes(streamUrl, "bytes=0-786431") ?: ByteArray(0)
             val tailBytes = fetchRangeBytes(streamUrl, "bytes=-131072") ?: ByteArray(0)
             val combined = headBytes + tailBytes
             if (combined.isEmpty()) return@runCatching emptyList()
@@ -101,7 +120,6 @@ object SkipSegmentManager {
 
             var i = 0
             while (i < combined.size - 12) {
-                // ChapterAtom ID = 0xB6
                 if ((combined[i].toInt() and 0xFF) == 0xB6) {
                     val (atomLen, lenBytes) = readEbmlVintSize(combined, i + 1)
                     if (atomLen in 10..4096 && i + 1 + lenBytes + atomLen <= combined.size) {
@@ -114,13 +132,11 @@ object SkipSegmentManager {
                         var j = atomStart
                         while (j < atomEnd - 2) {
                             val b0 = combined[j].toInt() and 0xFF
-                            // ChapterDisplay = 0x80 (container)
                             if (b0 == 0x80) {
                                 val (_, dLenBytes) = readEbmlVintSize(combined, j + 1)
                                 j += 1 + dLenBytes
                                 continue
                             }
-                            // ChapterTimeStart = 0x91
                             if (b0 == 0x91) {
                                 val (vLen, vLenBytes) = readEbmlVintSize(combined, j + 1)
                                 val valPos = j + 1 + vLenBytes
@@ -130,7 +146,6 @@ object SkipSegmentManager {
                                 j = valPos + vLen.toInt().coerceAtLeast(1)
                                 continue
                             }
-                            // ChapterTimeEnd = 0x92
                             if (b0 == 0x92) {
                                 val (vLen, vLenBytes) = readEbmlVintSize(combined, j + 1)
                                 val valPos = j + 1 + vLenBytes
@@ -140,7 +155,6 @@ object SkipSegmentManager {
                                 j = valPos + vLen.toInt().coerceAtLeast(1)
                                 continue
                             }
-                            // ChapString = 0x85
                             if (b0 == 0x85) {
                                 val (vLen, vLenBytes) = readEbmlVintSize(combined, j + 1)
                                 val valPos = j + 1 + vLenBytes
@@ -168,27 +182,29 @@ object SkipSegmentManager {
             if (rawChapters.isEmpty()) return@runCatching emptyList()
 
             val sorted = rawChapters.sortedBy { it.startMs }
+            val effectiveDur = if (durationMs > 0L) durationMs else (sorted.maxOf { it.startMs } + 90_000L)
             val initial = sorted.mapIndexed { idx, ch ->
+                val segType = classifyChapterTitle(ch.title)
+                val nextStart = if (idx + 1 < sorted.size) sorted[idx + 1].startMs else effectiveDur
                 val inferredEnd = when {
                     ch.endMs > ch.startMs -> ch.endMs
-                    idx + 1 < sorted.size -> sorted[idx + 1].startMs
-                    durationMs > ch.startMs -> durationMs
-                    else -> ch.startMs + 90_000L
+                    // If named OP/ED has no explicit ChapterTimeEnd and next chapter is >3m away, cap at 90s
+                    segType != SegmentType.CHAPTER && (nextStart - ch.startMs) > 180_000L ->
+                        (ch.startMs + 90_000L).coerceAtMost(nextStart)
+                    else -> nextStart
                 }
-                val segType = classifyChapterTitle(ch.title)
                 SkipSegment(ch.startMs, inferredEnd, segType, ch.title)
             }
 
-            // If MKV chapters use generic names ("Chapter 01", etc.), infer standard ~85-95s OP/ED segments
             val hasNamedSkip = initial.any { it.type != SegmentType.CHAPTER }
-            if (!hasNamedSkip && durationMs > 300_000L) {
-                initial.map { seg ->
+            if (!hasNamedSkip && effectiveDur > 240_000L) {
+                initial.mapIndexed { idx, seg ->
                     val segLen = seg.endMs - seg.startMs
-                    val isStandardOpEdLen = segLen in 45_000L..150_000L
+                    val isOpEdLen = segLen in 45_000L..150_000L
                     when {
-                        isStandardOpEdLen && seg.startMs < 420_000L ->
+                        isOpEdLen && seg.startMs < 420_000L && idx <= 3 ->
                             seg.copy(type = SegmentType.INTRO, title = "Intro")
-                        isStandardOpEdLen && (durationMs - seg.endMs) < 270_000L ->
+                        isOpEdLen && (effectiveDur - seg.endMs) < 270_000L && idx >= initial.size - 3 ->
                             seg.copy(type = SegmentType.OUTRO, title = "Outro")
                         else -> seg
                     }
@@ -237,6 +253,91 @@ object SkipSegmentManager {
             v = (v shl 8) or (buf[offset + k].toInt() and 0xFF).toLong()
         }
         return v
+    }
+
+    private fun fetchMalIdsViaAniList(title: String): List<Int> {
+        val query = """
+            query (${'$'}search: String) {
+              Page(page: 1, perPage: 5) {
+                media(search: ${'$'}search, type: ANIME, sort: POPULARITY_DESC) {
+                  idMal
+                }
+              }
+            }
+        """.trimIndent()
+        val payload = JSONObject().apply {
+            put("query", query)
+            put("variables", JSONObject().put("search", title))
+        }.toString()
+        val body = postJson("https://graphql.anilist.co", payload) ?: return emptyList()
+        val list = mutableListOf<Int>()
+        runCatching {
+            val mediaArr = JSONObject(body)
+                .optJSONObject("data")
+                ?.optJSONObject("Page")
+                ?.optJSONArray("media") ?: return@runCatching
+            for (i in 0 until mediaArr.length()) {
+                val idMal = mediaArr.optJSONObject(i)?.optInt("idMal", 0) ?: 0
+                if (idMal > 0) list.add(idMal)
+            }
+        }
+        return list
+    }
+
+    private fun fetchFromAniSkip(title: String, season: Int, episode: Int, durationMs: Long): List<SkipSegment> {
+        val searchTitle = if (season > 1) "$title Season $season" else title
+        val malIds = LinkedHashSet<Int>()
+        malIds.addAll(fetchMalIdsViaAniList(searchTitle))
+        if (season > 1) malIds.addAll(fetchMalIdsViaAniList(title))
+
+        if (malIds.isEmpty()) {
+            val encoded = URLEncoder.encode(searchTitle, "UTF-8")
+            val jikanBody = fetchJson("https://api.jikan.moe/v4/anime?q=$encoded&limit=3")
+            if (jikanBody != null) {
+                val dataArr = JSONObject(jikanBody).optJSONArray("data")
+                if (dataArr != null) {
+                    for (idx in 0 until dataArr.length()) {
+                        val malId = dataArr.optJSONObject(idx)?.optInt("mal_id", 0) ?: 0
+                        if (malId > 0) malIds.add(malId)
+                    }
+                }
+            }
+        }
+
+        val epLenSec = if (durationMs > 0L) (durationMs / 1000.0) else 1440.0
+        for (malId in malIds) {
+            val urlA = "https://api.aniskip.com/v2/skip-times/$malId/$episode?types=op&types=ed&types=recap&types=mixed-op&episodeLength=$epLenSec"
+            val urlB = "https://api.aniskip.com/v2/skip-times/$malId/$episode?types[]=op&types[]=ed&types[]=recap&types[]=mixed-op&episodeLength=0"
+            val skipBody = fetchJson(urlA) ?: fetchJson(urlB) ?: continue
+            val parsed = parseAniSkipJson(skipBody)
+            if (parsed.isNotEmpty()) return parsed
+        }
+        return emptyList()
+    }
+
+    private fun parseAniSkipJson(skipBody: String): List<SkipSegment> {
+        val list = mutableListOf<SkipSegment>()
+        runCatching {
+            val root = JSONObject(skipBody)
+            if (!root.optBoolean("found", false)) return@runCatching
+            val results = root.optJSONArray("results") ?: return@runCatching
+            for (i in 0 until results.length()) {
+                val item = results.optJSONObject(i) ?: continue
+                val interval = item.optJSONObject("interval") ?: continue
+                val startSec = interval.optDouble("startTime", -1.0)
+                val endSec = interval.optDouble("endTime", -1.0)
+                if (startSec >= 0.0 && endSec > startSec) {
+                    val skipType = item.optString("skipType", "op").lowercase()
+                    val type = when {
+                        "recap" in skipType -> SegmentType.RECAP
+                        "ed" in skipType -> SegmentType.OUTRO
+                        else -> SegmentType.INTRO
+                    }
+                    list.add(SkipSegment((startSec * 1000).toLong(), (endSec * 1000).toLong(), type))
+                }
+            }
+        }
+        return list
     }
 
     private fun fetchFromIntroDbTv(title: String, season: Int, episode: Int): List<SkipSegment> {
@@ -291,54 +392,12 @@ object SkipSegmentManager {
         return list
     }
 
-    private fun fetchFromAniSkip(title: String, episode: Int, durationMs: Long): List<SkipSegment> {
-        val encoded = URLEncoder.encode(title, "UTF-8")
-        val jikanBody = fetchJson("https://api.jikan.moe/v4/anime?q=$encoded&limit=3") ?: return emptyList()
-        val dataArr = JSONObject(jikanBody).optJSONArray("data") ?: return emptyList()
-        val epLenSec = if (durationMs > 0L) (durationMs / 1000.0) else 1440.0
-
-        for (idx in 0 until dataArr.length()) {
-            val malId = dataArr.optJSONObject(idx)?.optInt("mal_id", 0) ?: 0
-            if (malId <= 0) continue
-            val skipUrl = "https://api.aniskip.com/v2/skip-times/$malId/$episode?types[]=op&types[]=ed&types[]=recap&types[]=mixed-op&episodeLength=$epLenSec"
-            val skipBody = fetchJson(skipUrl) ?: continue
-            val parsed = parseAniSkipJson(skipBody)
-            if (parsed.isNotEmpty()) return parsed
-        }
-        return emptyList()
-    }
-
-    private fun parseAniSkipJson(skipBody: String): List<SkipSegment> {
-        val list = mutableListOf<SkipSegment>()
-        runCatching {
-            val root = JSONObject(skipBody)
-            if (!root.optBoolean("found", false)) return@runCatching
-            val results = root.optJSONArray("results") ?: return@runCatching
-            for (i in 0 until results.length()) {
-                val item = results.optJSONObject(i) ?: continue
-                val interval = item.optJSONObject("interval") ?: continue
-                val startSec = interval.optDouble("startTime", -1.0)
-                val endSec = interval.optDouble("endTime", -1.0)
-                if (startSec >= 0.0 && endSec > startSec) {
-                    val skipType = item.optString("skipType", "op").lowercase()
-                    val type = when {
-                        "recap" in skipType -> SegmentType.RECAP
-                        "ed" in skipType -> SegmentType.OUTRO
-                        else -> SegmentType.INTRO
-                    }
-                    list.add(SkipSegment((startSec * 1000).toLong(), (endSec * 1000).toLong(), type))
-                }
-            }
-        }
-        return list
-    }
-
     fun classifyChapterTitle(title: String): SegmentType {
         val t = title.lowercase().trim()
         return when {
-            t == "op" || t.startsWith("op ") || t.endsWith(" op") || "opening" in t || "intro" in t -> SegmentType.INTRO
-            "recap" in t -> SegmentType.RECAP
-            t == "ed" || t.startsWith("ed ") || t.endsWith(" ed") || "ending" in t || "outro" in t || "credit" in t -> SegmentType.OUTRO
+            t == "op" || t.startsWith("op ") || t.endsWith(" op") || "opening" in t || "intro" in t || "theme" in t -> SegmentType.INTRO
+            "recap" in t || "previously" in t -> SegmentType.RECAP
+            t == "ed" || t.startsWith("ed ") || t.endsWith(" ed") || "ending" in t || "outro" in t || "credit" in t || "preview" in t || "next time" in t -> SegmentType.OUTRO
             else -> SegmentType.CHAPTER
         }
     }
