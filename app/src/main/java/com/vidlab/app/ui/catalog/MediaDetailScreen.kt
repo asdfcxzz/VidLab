@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
@@ -35,6 +36,8 @@ import coil.compose.AsyncImage
 import com.vidlab.app.data.model.CastMember
 import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
+import com.vidlab.app.data.prefs.WatchProgress
+import com.vidlab.app.data.prefs.WatchProgressStore
 
 private val DeepPurpleBg = Color(0xFF09070F)
 private val SurfaceDark = Color(0xFF141120)
@@ -56,6 +59,9 @@ fun MediaDetailScreen(
     onFixMatchClick: () -> Unit = { onRematch(item) }
 ) {
     val context = LocalContext.current
+    val progressStore = remember { WatchProgressStore(context) }
+    val progressRevision by WatchProgressStore.revision
+
     var selectedSeasonIndex by remember { mutableStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showPlotExpanded by remember { mutableStateOf(false) }
@@ -77,6 +83,37 @@ fun MediaDetailScreen(
     val currentSeason = seasons.getOrNull(selectedSeasonIndex)
     val heroImg = item.backdropUrl ?: item.posterUrl
     val metadata = item.metadata
+
+    val allEpisodes = remember(seasons) { seasons.flatMap { it.episodes } }
+    val nextEpisode = remember(allEpisodes, progressRevision) {
+        allEpisodes.firstOrNull { ep ->
+            val p = progressStore.getProgress(ep.file.path)
+            p == null || !p.watched
+        } ?: allEpisodes.firstOrNull()
+    }
+    val primaryTargetFile = if (item.isSeries) (nextEpisode?.file ?: item.primaryFile) else item.primaryFile
+    val primaryProgress = remember(primaryTargetFile, progressRevision) {
+        progressStore.getProgress(primaryTargetFile.path)
+    }
+
+    val primaryButtonLabel = remember(item, nextEpisode, primaryProgress) {
+        if (item.isSeries) {
+            val epTag = if (nextEpisode != null) {
+                "S%02dE%02d".format(nextEpisode.seasonNumber, nextEpisode.episodeNumber)
+            } else "S01E01"
+            if (primaryProgress != null && !primaryProgress.watched && primaryProgress.positionMs > 3000L) {
+                "Resume $epTag"
+            } else {
+                "Play $epTag"
+            }
+        } else {
+            if (primaryProgress != null && !primaryProgress.watched && primaryProgress.positionMs > 3000L) {
+                "Resume Movie"
+            } else {
+                "Play Movie"
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -160,6 +197,20 @@ fun MediaDetailScreen(
                                 modifier = Modifier.background(SurfaceDark)
                             ) {
                                 DropdownMenuItem(
+                                    text = { Text("Mark Primary as Watched", color = Color.White) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        progressStore.markWatched(primaryTargetFile.path, true)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reset Watch Progress", color = Color.White) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        progressStore.markWatched(primaryTargetFile.path, false)
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Rename & Restructure Files", color = Color.White) },
                                     onClick = {
                                         menuExpanded = false
@@ -177,7 +228,7 @@ fun MediaDetailScreen(
                                     text = { Text("Open in External Player (MPV)", color = Color.White) },
                                     onClick = {
                                         menuExpanded = false
-                                        launchExternal(item.primaryFile)
+                                        launchExternal(primaryTargetFile)
                                     }
                                 )
                                 DropdownMenuItem(
@@ -218,7 +269,10 @@ fun MediaDetailScreen(
                                 MetaBadge(text = item.releaseYear!!)
                             }
                             if (item.isSeries) {
-                                MetaBadge(text = "${seasons.size} Season${if (seasons.size > 1) "s" else ""} • ${item.totalEpisodesCount} Eps")
+                                val watchedCount = remember(allEpisodes, progressRevision) {
+                                    allEpisodes.count { progressStore.getProgress(it.file.path)?.watched == true }
+                                }
+                                MetaBadge(text = "${seasons.size} Season${if (seasons.size > 1) "s" else ""} • $watchedCount/${item.totalEpisodesCount} Watched")
                             } else {
                                 val sizeGb = String.format("%.2f GB", item.primaryFile.size / 1024.0 / 1024.0 / 1024.0)
                                 MetaBadge(text = "Movie • $sizeGb")
@@ -239,54 +293,68 @@ fun MediaDetailScreen(
             }
 
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = { onPlayClick(item.primaryFile) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
+                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = DeepPurpleBg,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (item.isSeries) "Play S01E01" else "Play Movie",
-                            color = DeepPurpleBg,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
+                        Button(
+                            onClick = { onPlayClick(primaryTargetFile) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = DeepPurpleBg,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = primaryButtonLabel,
+                                color = DeepPurpleBg,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { launchExternal(primaryTargetFile) },
+                            border = BorderStroke(1.dp, BorderPurple),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark),
+                            modifier = Modifier
+                                .height(52.dp)
+                                .width(56.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.OpenInNew,
+                                contentDescription = "External Player",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
-                    OutlinedButton(
-                        onClick = { launchExternal(item.primaryFile) },
-                        border = BorderStroke(1.dp, BorderPurple),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark),
-                        modifier = Modifier
-                            .height(52.dp)
-                            .width(56.dp),
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.OpenInNew,
-                            contentDescription = "External Player",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                    if (primaryProgress != null && !primaryProgress.watched && primaryProgress.fraction > 0.01f) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { primaryProgress.fraction },
+                            color = AccentViolet,
+                            trackColor = BorderPurple,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
                         )
                     }
                 }
             }
+
             if (!metadata?.overview.isNullOrBlank()) {
                 item {
                     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
@@ -386,29 +454,38 @@ fun MediaDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
+            }
 
-                if (currentSeason != null) {
-                    items(currentSeason.episodes) { ep ->
-                        val sizeStr = if (ep.file.size > 0) {
-                            String.format("%.2f GB", ep.file.size / 1024.0 / 1024.0 / 1024.0)
-                        } else "WebDAV Stream"
+            if (currentSeason != null) {
+                items(currentSeason.episodes) { ep ->
+                    val sizeStr = if (ep.file.size > 0) {
+                        String.format("%.2f GB", ep.file.size / 1024.0 / 1024.0 / 1024.0)
+                    } else "WebDAV Stream"
 
-                        val cleanEpisodeName = ep.title
-                            .substringAfter("•", ep.title)
-                            .replace(Regex("""(?i)^S\d{1,2}E\d{1,3}\s*[-•:]?\s*"""), "")
-                            .trim()
-                            .ifEmpty { "Episode ${ep.episodeNumber}" }
+                    val cleanEpisodeName = ep.title
+                        .substringAfter("•", ep.title)
+                        .replace(Regex("""(?i)^S\d{1,2}E\d{1,3}\s*[-•:]?\s*"""), "")
+                        .trim()
+                        .ifEmpty { "Episode ${ep.episodeNumber}" }
 
-                        EpisodeCard(
-                            episodeTitle = cleanEpisodeName,
-                            seasonNumber = ep.seasonNumber,
-                            episodeNumber = ep.episodeNumber,
-                            thumbnailUrl = ep.thumbnail,
-                            fileSize = sizeStr,
-                            onPlayClick = { onPlayClick(ep.file) },
-                            onExternalClick = { launchExternal(ep.file) }
-                        )
+                    val epProgress = remember(ep.file.path, progressRevision) {
+                        progressStore.getProgress(ep.file.path)
                     }
+
+                    EpisodeCard(
+                        episodeTitle = cleanEpisodeName,
+                        seasonNumber = ep.seasonNumber,
+                        episodeNumber = ep.episodeNumber,
+                        thumbnailUrl = ep.thumbnail,
+                        fileSize = sizeStr,
+                        progress = epProgress,
+                        onPlayClick = { onPlayClick(ep.file) },
+                        onToggleWatched = {
+                            val nextState = !(epProgress?.watched ?: false)
+                            progressStore.markWatched(ep.file.path, nextState)
+                        },
+                        onExternalClick = { launchExternal(ep.file) }
+                    )
                 }
             }
         }
@@ -518,7 +595,9 @@ private fun EpisodeCard(
     episodeNumber: Int,
     thumbnailUrl: String?,
     fileSize: String,
+    progress: WatchProgress?,
     onPlayClick: () -> Unit,
+    onToggleWatched: () -> Unit,
     onExternalClick: () -> Unit
 ) {
     Surface(
@@ -566,6 +645,22 @@ private fun EpisodeCard(
                         modifier = Modifier.size(16.dp)
                     )
                 }
+                if (progress != null && progress.fraction > 0.01f && !progress.watched) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .background(Color.Black.copy(alpha = 0.6f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress.fraction)
+                                .fillMaxHeight()
+                                .background(AccentViolet)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -584,14 +679,34 @@ private fun EpisodeCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "S${seasonNumber}E${episodeNumber} •$fileSize",
-                    color = Color(0xFF9E95B8),
-                    fontSize = 11.sp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "S${seasonNumber}E${episodeNumber} • $fileSize",
+                        color = Color(0xFF9E95B8),
+                        fontSize = 11.sp
+                    )
+                    if (progress?.watched == true) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "• Watched",
+                            color = Color(0xFF4CAF50),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            IconButton(onClick = onToggleWatched, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Toggle Watched",
+                    tint = if (progress?.watched == true) Color(0xFF4CAF50) else Color(0xFF4A4266),
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
-            IconButton(onClick = onExternalClick) {
+            IconButton(onClick = onExternalClick, modifier = Modifier.size(34.dp)) {
                 Icon(
                     imageVector = Icons.Default.OpenInNew,
                     contentDescription = "Open in External Player",

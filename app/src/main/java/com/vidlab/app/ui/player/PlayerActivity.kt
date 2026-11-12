@@ -21,6 +21,11 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import com.vidlab.app.data.prefs.PlayerPreferences
+import com.vidlab.app.data.prefs.WatchProgressStore
+import com.vidlab.app.data.remote.SimklManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -91,6 +96,8 @@ class PlayerActivity : ComponentActivity() {
         val streamUrl = if (rawPath.startsWith("http")) rawPath else "http://127.0.0.1:8080$encodedPath"
 
         val playerPrefs = PlayerPreferences(this)
+        val watchProgressStore = WatchProgressStore(this)
+        val savedProg = watchProgressStore.getProgress(rawPath)
         val extMode = if (playerPrefs.preferFfmpegAudio) {
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
         } else {
@@ -108,6 +115,9 @@ class PlayerActivity : ComponentActivity() {
             setPlaybackSpeed(playerPrefs.defaultSpeed)
             setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)))
             prepare()
+            if (savedProg != null && !savedProg.watched && savedProg.positionMs > 3000L) {
+                seekTo(savedProg.positionMs)
+            }
             playWhenReady = true
         }
 
@@ -116,6 +126,7 @@ class PlayerActivity : ComponentActivity() {
                 ModernPlayerScreen(
                     player = player,
                     title = displayTitle,
+                    filePath = rawPath,
                     onBack = { finish() }
                 )
             }
@@ -136,7 +147,13 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        exoPlayer?.pause()
+        exoPlayer?.let { p ->
+            val url = intent.getStringExtra("FILE_PATH") ?: ""
+            if (url.isNotBlank() && p.duration > 0L) {
+                WatchProgressStore(this).saveProgress(url, p.currentPosition, p.duration)
+            }
+            p.pause()
+        }
     }
 
     override fun onStop() {
@@ -156,6 +173,7 @@ class PlayerActivity : ComponentActivity() {
 private fun ModernPlayerScreen(
     player: ExoPlayer,
     title: String,
+    filePath: String = "",
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -179,6 +197,7 @@ private fun ModernPlayerScreen(
         AspectRatioFrameLayout.RESIZE_MODE_FILL to "Fill"
     )
     var playbackSpeed by remember { mutableFloatStateOf(playerPrefs.defaultSpeed) }
+    var simklScrobbled by remember { mutableStateOf(false) }
     var customScale by remember { mutableFloatStateOf(1f) }
     var customOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -279,6 +298,15 @@ private fun ModernPlayerScreen(
         while (true) {
             currentPos = player.currentPosition.coerceAtLeast(0L)
             if (player.duration > 0L) duration = player.duration
+            if (duration > 0L && currentPos > 0L && (currentPos / 1000L) % 5L == 0L) {
+                if (filePath.isNotBlank()) WatchProgressStore(context).saveProgress(filePath, currentPos, duration)
+                if (!simklScrobbled && currentPos.toFloat() / duration.toFloat() >= 0.80f) {
+                    simklScrobbled = true
+                    CoroutineScope(Dispatchers.IO).launch {
+                        SimklManager(context).scrobblePlayback(title)
+                    }
+                }
+            }
             delay(400L)
         }
     }
