@@ -1,5 +1,6 @@
 package com.vidlab.app.data.scraper
 
+import com.vidlab.app.data.model.CastMember
 import com.vidlab.app.data.model.MediaMetadata
 import com.vidlab.app.data.model.TmdbSearchResult
 import kotlinx.coroutines.Dispatchers
@@ -33,106 +34,246 @@ class MetadataScraper(
         .build(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
+    private val tmdbApiKey = "b7cd3340a794e5a2f35e3abb820b497f"
+    private val imageBase = "https://image.tmdb.org/t/p/w500"
+    private val backdropBase = "https://image.tmdb.org/t/p/w1280"
+    private val profileBase = "https://image.tmdb.org/t/p/w185"
+
     suspend fun searchMetadata(query: String): List<TmdbSearchResult> = withContext(Dispatchers.IO) {
         val clean = FilenameSanitizer.parse(query).cleanTitle.ifEmpty { query }
         val encoded = URLEncoder.encode(clean, "UTF-8")
         val results = mutableListOf<TmdbSearchResult>()
 
         try {
-            val tvMazeUrl = "https://api.tvmaze.com/search/shows?q=$encoded"
-            val resp = client.newCall(Request.Builder().url(tvMazeUrl).build()).execute()
+            val url = "https://api.themoviedb.org/3/search/multi?api_key=$tmdbApiKey&query=$encoded&include_adult=false"
+            val resp = client.newCall(Request.Builder().url(url).build()).execute()
             if (resp.isSuccessful) {
                 val body = resp.body?.string() ?: ""
-                val array = json.parseToJsonElement(body).jsonArray
-                for (item in array.take(4)) {
-                    val show = item.jsonObject["show"]?.jsonObject ?: continue
-                    val id = show["id"]?.jsonPrimitive?.intOrNull ?: continue
-                    val name = show["name"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val premiered = show["premiered"]?.jsonPrimitive?.contentOrNull ?: ""
-                    val year = if (premiered.length >= 4) premiered.take(4) else null
-                    val poster = show["image"]?.jsonObject?.get("medium")?.jsonPrimitive?.contentOrNull
-                    results.add(TmdbSearchResult(id, name, "tv", year, poster))
-                }
-            }
-        } catch (_: Exception) {}
+                val array = json.parseToJsonElement(body).jsonObject["results"]?.jsonArray ?: JsonArray(emptyList())
+                for (elem in array.take(12)) {
+                    val o = elem.jsonObject
+                    val mediaType = o["media_type"]?.jsonPrimitive?.contentOrNull ?: continue
+                    if (mediaType != "movie" && mediaType != "tv") continue
 
-        try {
-            val omdbUrl = "https://www.omdbapi.com/?s=$encoded&apikey=trilogy"
-            val resp = client.newCall(Request.Builder().url(omdbUrl).build()).execute()
-            if (resp.isSuccessful) {
-                val body = resp.body?.string() ?: ""
-                val obj = json.parseToJsonElement(body).jsonObject
-                val search = obj["Search"]?.jsonArray ?: JsonArray(emptyList())
-                for (item in search.take(4)) {
-                    val o = item.jsonObject
-                    val title = o["Title"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val year = o["Year"]?.jsonPrimitive?.contentOrNull
-                    val poster = o["Poster"]?.jsonPrimitive?.contentOrNull?.takeIf { it != "N/A" }
-                    val imdbId = o["imdbID"]?.jsonPrimitive?.contentOrNull ?: ""
-                    val idNum = imdbId.filter { it.isDigit() }.toIntOrNull() ?: imdbId.hashCode()
-                    results.add(TmdbSearchResult(idNum, title, "movie", year, poster))
+                    val id = o["id"]?.jsonPrimitive?.intOrNull ?: continue
+                    val title = if (mediaType == "movie") {
+                        o["title"]?.jsonPrimitive?.contentOrNull ?: ""
+                    } else {
+                        o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                    }
+
+                    val date = if (mediaType == "movie") {
+                        o["release_date"]?.jsonPrimitive?.contentOrNull ?: ""
+                    } else {
+                        o["first_air_date"]?.jsonPrimitive?.contentOrNull ?: ""
+                    }
+                    val year = if (date.length >= 4) date.take(4) else null
+                    val posterPath = o["poster_path"]?.jsonPrimitive?.contentOrNull
+                    val poster = if (posterPath != null) "$imageBase$posterPath" else null
+
+                    results.add(TmdbSearchResult(id, title, mediaType, year, poster))
                 }
             }
+            resp.close()
         } catch (_: Exception) {}
 
         results
     }
 
-    suspend fun scrapeWithVerification(rawTitle: String, forcedId: String? = null, forcedType: String? = null): MatchResult = withContext(Dispatchers.IO) {
-        val parsed = FilenameSanitizer.parse(rawTitle)
-        val clean = parsed.cleanTitle
+    suspend fun scrapeWithVerification(
+        rawTitle: String,
+        isKnownSeries: Boolean,
+        forcedId: String? = null,
+        forcedType: String? = null,
+        forcedYear: String? = null
+    ): MatchResult = withContext(Dispatchers.IO) {
+        val parsed = FilenameSanitizer.parse(rawTitle, forceMovie = !isKnownSeries && forcedType != "tv")
+        val clean = parsed.cleanTitle.ifBlank { rawTitle }
         val encoded = URLEncoder.encode(clean, "UTF-8")
+        val searchType = if (isKnownSeries || forcedType == "tv") "tv" else "movie"
 
-        // 1. TVmaze Show lookup
+        if (forcedId != null && forcedId.all { it.isDigit() }) {
+            val details = fetchTmdbDetails(forcedId.toInt(), searchType)
+            if (details != null) {
+                return@withContext MatchResult.ConfidentMatch(details.first, details.second)
+            }
+        }
+
+        val candidates = mutableListOf<TmdbSearchResult>()
         try {
-            val tvMazeUrl = "https://api.tvmaze.com/singlesearch/shows?q=$encoded&embed=episodes"
-            val resp = client.newCall(Request.Builder().url(tvMazeUrl).build()).execute()
+            val yearParam = if (!forcedYear.isNullOrBlank()) {
+                if (searchType == "movie") "&year=$forcedYear" else "&first_air_date_year=$forcedYear"
+            } else if (!parsed.year.isNullOrBlank()) {
+                if (searchType == "movie") "&year=${parsed.year}" else "&first_air_date_year=${parsed.year}"
+            } else ""
+
+            val url = "https://api.themoviedb.org/3/search/$searchType?api_key=$tmdbApiKey&query=$encoded$yearParam&include_adult=false"
+            val resp = client.newCall(Request.Builder().url(url).build()).execute()
             if (resp.isSuccessful) {
                 val body = resp.body?.string() ?: ""
-                val obj = json.parseToJsonElement(body).jsonObject
-                val title = obj["name"]?.jsonPrimitive?.contentOrNull ?: ""
-                val premiered = obj["premiered"]?.jsonPrimitive?.contentOrNull ?: ""
-                val year = if (premiered.length >= 4) premiered.take(4) else null
-
-                val imgObj = obj["image"]?.jsonObject
-                val poster = imgObj?.get("original")?.jsonPrimitive?.contentOrNull ?: imgObj?.get("medium")?.jsonPrimitive?.contentOrNull
-
-                val episodesMap = mutableMapOf<String, ScrapedEpisode>()
-                val epsArray = obj["_embedded"]?.jsonObject?.get("episodes")?.jsonArray ?: JsonArray(emptyList())
-
-                for (epElem in epsArray) {
-                    val eo = epElem.jsonObject
-                    val s = eo["season"]?.jsonPrimitive?.intOrNull ?: 1
-                    val epNum = eo["number"]?.jsonPrimitive?.intOrNull ?: 1
-                    val epName = eo["name"]?.jsonPrimitive?.contentOrNull ?: "Episode $epNum"
-                    val epThumb = eo["image"]?.jsonObject?.get("original")?.jsonPrimitive?.contentOrNull ?: poster
-
-                    episodesMap["S${s}E${epNum}"] = ScrapedEpisode(s, epNum, epName, "", epThumb)
-                }
-
-                val meta = MediaMetadata(title, poster, poster, year, listOf("TV Series"))
-                return@withContext MatchResult.ConfidentMatch(meta, episodesMap)
-            }
-        } catch (_: Exception) {}
-
-        // 2. Movie lookup via OMDb
-        try {
-            val yrParam = if (!parsed.year.isNullOrBlank()) "&y=${parsed.year}" else ""
-            val omdbUrl = "https://www.omdbapi.com/?t=$encoded$yrParam&apikey=trilogy"
-            val resp = client.newCall(Request.Builder().url(omdbUrl).build()).execute()
-            if (resp.isSuccessful) {
-                val body = resp.body?.string() ?: ""
-                val obj = json.parseToJsonElement(body).jsonObject
-                if (obj["Response"]?.jsonPrimitive?.contentOrNull == "True") {
-                    val title = obj["Title"]?.jsonPrimitive?.contentOrNull ?: clean
-                    val year = obj["Year"]?.jsonPrimitive?.contentOrNull
-                    val poster = obj["Poster"]?.jsonPrimitive?.contentOrNull?.takeIf { it != "N/A" }
-                    val meta = MediaMetadata(title, poster, poster, year, listOf("Movie"))
-                    return@withContext MatchResult.ConfidentMatch(meta, emptyMap())
+                val array = json.parseToJsonElement(body).jsonObject["results"]?.jsonArray ?: JsonArray(emptyList())
+                for (elem in array.take(8)) {
+                    val o = elem.jsonObject
+                    val id = o["id"]?.jsonPrimitive?.intOrNull ?: continue
+                    val title = if (searchType == "movie") o["title"]?.jsonPrimitive?.contentOrNull ?: "" else o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val date = if (searchType == "movie") o["release_date"]?.jsonPrimitive?.contentOrNull ?: "" else o["first_air_date"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val year = if (date.length >= 4) date.take(4) else null
+                    val posterPath = o["poster_path"]?.jsonPrimitive?.contentOrNull
+                    val poster = if (posterPath != null) "$imageBase$posterPath" else null
+                    candidates.add(TmdbSearchResult(id, title, searchType, year, poster))
                 }
             }
+            resp.close()
         } catch (_: Exception) {}
+
+        if (candidates.isEmpty()) {
+            try {
+                val url = "https://api.themoviedb.org/3/search/$searchType?api_key=$tmdbApiKey&query=$encoded&include_adult=false"
+                val resp = client.newCall(Request.Builder().url(url).build()).execute()
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string() ?: ""
+                    val array = json.parseToJsonElement(body).jsonObject["results"]?.jsonArray ?: JsonArray(emptyList())
+                    for (elem in array.take(8)) {
+                        val o = elem.jsonObject
+                        val id = o["id"]?.jsonPrimitive?.intOrNull ?: continue
+                        val title = if (searchType == "movie") o["title"]?.jsonPrimitive?.contentOrNull ?: "" else o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                        val date = if (searchType == "movie") o["release_date"]?.jsonPrimitive?.contentOrNull ?: "" else o["first_air_date"]?.jsonPrimitive?.contentOrNull ?: ""
+                        val year = if (date.length >= 4) date.take(4) else null
+                        val posterPath = o["poster_path"]?.jsonPrimitive?.contentOrNull
+                        val poster = if (posterPath != null) "$imageBase$posterPath" else null
+                        candidates.add(TmdbSearchResult(id, title, searchType, year, poster))
+                    }
+                }
+                resp.close()
+            } catch (_: Exception) {}
+        }
+
+        if (candidates.isNotEmpty()) {
+            val normQuery = clean.lowercase().replace(Regex("[^a-z0-9]"), "")
+            val exactCandidate = candidates.firstOrNull {
+                it.title.lowercase().replace(Regex("[^a-z0-9]"), "") == normQuery
+            } ?: candidates.first()
+
+            val details = fetchTmdbDetails(exactCandidate.id, searchType)
+            if (details != null) {
+                if (searchType == "movie" || details.second.isNotEmpty()) {
+                    return@withContext MatchResult.ConfidentMatch(details.first, details.second)
+                }
+            }
+
+            if (candidates.size > 1) {
+                return@withContext MatchResult.Ambiguous(clean, candidates)
+            }
+        }
 
         MatchResult.NoMatch
+    }
+
+    private suspend fun fetchTmdbDetails(id: Int, type: String): Pair<MediaMetadata, Map<String, ScrapedEpisode>>? = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://api.themoviedb.org/3/$type/$id?api_key=$tmdbApiKey&append_to_response=credits"
+            val resp = client.newCall(Request.Builder().url(url).build()).execute()
+            if (!resp.isSuccessful) {
+                resp.close()
+                return@withContext null
+            }
+
+            val body = resp.body?.string() ?: ""
+            resp.close()
+            val obj = json.parseToJsonElement(body).jsonObject
+
+            val title = if (type == "movie") {
+                obj["title"]?.jsonPrimitive?.contentOrNull ?: ""
+            } else {
+                obj["name"]?.jsonPrimitive?.contentOrNull ?: ""
+            }
+
+            val date = if (type == "movie") {
+                obj["release_date"]?.jsonPrimitive?.contentOrNull ?: ""
+            } else {
+                obj["first_air_date"]?.jsonPrimitive?.contentOrNull ?: ""
+            }
+            val year = if (date.length >= 4) date.take(4) else null
+
+            val rating = obj["vote_average"]?.jsonPrimitive?.doubleOrNull?.takeIf { it > 0.0 }
+            val overview = obj["overview"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+
+            val posterPath = obj["poster_path"]?.jsonPrimitive?.contentOrNull
+            val backdropPath = obj["backdrop_path"]?.jsonPrimitive?.contentOrNull
+            val poster = if (posterPath != null) "$imageBase$posterPath" else null
+            val backdrop = if (backdropPath != null) "$backdropBase$backdropPath" else poster
+
+            val genres = obj["genres"]?.jsonArray?.mapNotNull {
+                it.jsonObject["name"]?.jsonPrimitive?.contentOrNull
+            } ?: listOf(if (type == "movie") "Movie" else "TV Series")
+
+            val castList = mutableListOf<CastMember>()
+            val creditsObj = obj["credits"]?.jsonObject
+            if (creditsObj != null) {
+                val crewArr = creditsObj["crew"]?.jsonArray ?: JsonArray(emptyList())
+                val director = crewArr.firstOrNull {
+                    it.jsonObject["job"]?.jsonPrimitive?.contentOrNull.equals("Director", ignoreCase = true)
+                }?.jsonObject
+                if (director != null) {
+                    val dName = director["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val dPath = director["profile_path"]?.jsonPrimitive?.contentOrNull
+                    if (dName.isNotBlank()) {
+                        castList.add(CastMember(dName, "Director", dPath?.let { "$profileBase$it" }))
+                    }
+                }
+
+                val castArr = creditsObj["cast"]?.jsonArray ?: JsonArray(emptyList())
+                for (c in castArr.take(12)) {
+                    val co = c.jsonObject
+                    val cName = co["name"]?.jsonPrimitive?.contentOrNull ?: continue
+                    val cRole = co["character"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val cPath = co["profile_path"]?.jsonPrimitive?.contentOrNull
+                    castList.add(CastMember(cName, cRole, cPath?.let { "$profileBase$it" }))
+                }
+            }
+
+            val meta = MediaMetadata(
+                title = title,
+                posterUrl = poster,
+                backdropUrl = backdrop,
+                releaseYear = year,
+                genres = genres,
+                rating = rating,
+                overview = overview,
+                cast = castList
+            )
+            val episodesMap = mutableMapOf<String, ScrapedEpisode>()
+
+            if (type == "tv") {
+                val seasons = obj["seasons"]?.jsonArray ?: JsonArray(emptyList())
+                for (s in seasons) {
+                    val sNum = s.jsonObject["season_number"]?.jsonPrimitive?.intOrNull ?: continue
+                    if (sNum <= 0) continue
+
+                    try {
+                        val sUrl = "https://api.themoviedb.org/3/tv/$id/season/$sNum?api_key=$tmdbApiKey"
+                        val sResp = client.newCall(Request.Builder().url(sUrl).build()).execute()
+                        if (sResp.isSuccessful) {
+                            val sBody = sResp.body?.string() ?: ""
+                            val eps = json.parseToJsonElement(sBody).jsonObject["episodes"]?.jsonArray ?: JsonArray(emptyList())
+                            for (ep in eps) {
+                                val eo = ep.jsonObject
+                                val eNum = eo["episode_number"]?.jsonPrimitive?.intOrNull ?: continue
+                                val eName = eo["name"]?.jsonPrimitive?.contentOrNull ?: "Episode $eNum"
+                                val still = eo["still_path"]?.jsonPrimitive?.contentOrNull
+                                val thumb = if (still != null) "$imageBase$still" else backdrop
+
+                                episodesMap["S${sNum}E${eNum}"] = ScrapedEpisode(sNum, eNum, eName, "", thumb)
+                            }
+                        }
+                        sResp.close()
+                    } catch (_: Exception) {}
+                }
+            }
+
+            Pair(meta, episodesMap)
+        } catch (_: Exception) {
+            null
+        }
     }
 }

@@ -75,16 +75,38 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun applyCandidateSelection(item: ScrapedMediaItem, candidate: TmdbSearchResult) {
-        repository.saveManualBinding(item.id, candidate.title, candidate.mediaType, candidate.year)
-        val updatedItem = item.copy(title = candidate.title, releaseYear = candidate.year)
-        _singleRenamePlan.value = repository.generateRenamePlan(updatedItem, candidate.title, candidate.year)
+        repository.saveManualBinding(
+            mediaKey = item.id,
+            targetTitle = candidate.title,
+            mediaType = candidate.mediaType,
+            year = candidate.year,
+            posterUrl = candidate.posterUrl
+        )
+        val updatedItem = item.copy(
+            title = candidate.title,
+            releaseYear = candidate.year,
+            posterUrl = candidate.posterUrl ?: item.posterUrl
+        )
+        _singleRenamePlan.value = repository.generateRenamePlan(
+            item = updatedItem,
+            customTitle = candidate.title,
+            customYear = candidate.year,
+            isManualOverride = true
+        )
+        loadMediaCenter()
     }
 
     fun applyManualCustomRename(item: ScrapedMediaItem, title: String, year: String?) {
         val type = if (item.isSeries) "tv" else "movie"
-        repository.saveManualBinding(item.id, title, type, year)
+        repository.saveManualBinding(item.id, title, type, year, null)
         val updatedItem = item.copy(title = title, releaseYear = year)
-        _singleRenamePlan.value = repository.generateRenamePlan(updatedItem, title, year)
+        _singleRenamePlan.value = repository.generateRenamePlan(
+            item = updatedItem,
+            customTitle = title,
+            customYear = year,
+            isManualOverride = true
+        )
+        loadMediaCenter()
     }
 
     fun dismissSingleRenamePlan() {
@@ -98,18 +120,20 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             val app = getApplication<Application>()
             var failed = 0
             for (op in ops) {
-                val res = repository.webDavClient.moveFile(op.oldPath, op.newPath)
-                if (res.isFailure) failed++
+                if (op.oldPath != op.newPath) {
+                    val res = repository.webDavClient.moveFile(op.oldPath, op.newPath)
+                    if (res.isFailure) failed++
+                }
             }
             _isSingleRenaming.value = false
             _singleRenamePlan.value = null
 
             withContext(Dispatchers.Main) {
                 if (failed == 0) {
-                    Toast.makeText(app, "Successfully restructured and renamed!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(app, "Restructured successfully!", Toast.LENGTH_SHORT).show()
                     onSuccess()
                 } else {
-                    Toast.makeText(app, "$failed file(s) failed to rename", Toast.LENGTH_LONG).show()
+                    Toast.makeText(app, "$failed file(s) failed to move", Toast.LENGTH_LONG).show()
                 }
             }
             loadMediaCenter()
@@ -121,7 +145,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             _progressState.update {
                 it.copy(
                     isRunning = true,
-                    currentStep = "Scanning storage for media...",
+                    currentStep = "Scanning storage for unstructured media...",
                     logs = listOf("Starting WebDAV crawl..."),
                     isCompleted = false,
                     error = null
@@ -140,7 +164,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             val allOps = mutableListOf<RenameOperation>()
 
             for (item in allItems) {
-                allOps.addAll(repository.generateRenamePlan(item))
+                allOps.addAll(repository.generateRenamePlan(item, isManualOverride = false))
             }
 
             if (allOps.isEmpty()) {
@@ -171,6 +195,7 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
 
+                kotlinx.coroutines.delay(350)
                 val moveResult = repository.webDavClient.moveFile(op.oldPath, op.newPath)
                 val logEntry = if (moveResult.isSuccess) {
                     "✓ Moved: ${op.fileName} -> ${op.newPath}"

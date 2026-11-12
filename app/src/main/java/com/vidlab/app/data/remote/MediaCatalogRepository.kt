@@ -7,9 +7,19 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+
+@Serializable
+data class StoredBinding(
+    val title: String,
+    val mediaType: String,
+    val year: String? = null,
+    val posterUrl: String? = null,
+    val tmdbId: String? = null
+)
 
 class MediaCatalogRepository(
     private val context: Context,
@@ -17,16 +27,30 @@ class MediaCatalogRepository(
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
-    private val cacheFile = File(context.filesDir, "catalog_cache_v23.json")
-    private val manualBindingsFile = File(context.filesDir, "manual_bindings.json")
+    private val cacheFile = File(context.filesDir, "catalog_cache_v240.json")
+    private val manualBindingsFile = File(context.filesDir, "manual_bindings_v5.json")
 
     private val _ambiguousMatchesFlow = MutableSharedFlow<AmbiguousPrompt>(replay = 10)
     val ambiguousMatchesFlow: SharedFlow<AmbiguousPrompt> = _ambiguousMatchesFlow.asSharedFlow()
 
-    private fun getManualBindings(): MutableMap<String, String> {
+    private val ignoredCategoryFolders = setOf(
+        "shows", "tv shows", "tv", "anime", "movies", "media", "disk", "root", "webdav", "videos", "extracted_stream", ""
+    )
+
+    init {
+        try {
+            context.filesDir.listFiles()?.forEach { f ->
+                if (f.name.startsWith("catalog_cache_") && f.name != "catalog_cache_v240.json") {
+                    f.delete()
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun getManualBindings(): MutableMap<String, StoredBinding> {
         return try {
             if (manualBindingsFile.exists()) {
-                val map: Map<String, String> = json.decodeFromString(manualBindingsFile.readText())
+                val map: Map<String, StoredBinding> = json.decodeFromString(manualBindingsFile.readText())
                 map.toMutableMap()
             } else mutableMapOf()
         } catch (_: Exception) {
@@ -34,10 +58,18 @@ class MediaCatalogRepository(
         }
     }
 
-    fun saveManualBinding(mediaKey: String, targetTitleOrId: String, mediaType: String, year: String? = null) {
+    fun saveManualBinding(
+        mediaKey: String,
+        targetTitle: String,
+        mediaType: String,
+        year: String? = null,
+        posterUrl: String? = null,
+        tmdbId: String? = null
+    ) {
+        if (mediaKey.isBlank() || mediaKey in ignoredCategoryFolders) return
         val bindings = getManualBindings()
-        val yearPart = if (!year.isNullOrBlank()) ":$year" else ""
-        bindings[mediaKey] = "$targetTitleOrId:$mediaType$yearPart"
+        val clean = targetTitle.replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
+        bindings[mediaKey] = StoredBinding(clean, mediaType, year, posterUrl, tmdbId)
         manualBindingsFile.writeText(json.encodeToString(bindings))
         cacheFile.delete()
     }
@@ -77,13 +109,16 @@ class MediaCatalogRepository(
             val movieList = mutableListOf<ScrapedMediaItem>()
 
             for (item in scrapedItems) {
-                val isAnime = item.metadata?.genres?.any { it.contains("animation", true) } == true ||
-                              item.primaryFile.path.contains("anime", true) ||
-                              item.title.contains("isekai", true)
-
-                if (isAnime) animeList.add(item)
-                else if (item.isSeries) tvList.add(item)
-                else movieList.add(item)
+                val pathUpper = item.primaryFile.path.uppercase()
+                when {
+                    pathUpper.contains("/MOVIES/") || !item.isSeries -> movieList.add(item)
+                    pathUpper.contains("/ANIME/") -> animeList.add(item)
+                    pathUpper.contains("/SHOWS/") -> tvList.add(item)
+                    else -> {
+                        val isAnimeGenre = item.metadata?.genres?.any { it.contains("animation", true) } == true
+                        if (isAnimeGenre) animeList.add(item) else tvList.add(item)
+                    }
+                }
             }
 
             listOf(
@@ -97,57 +132,79 @@ class MediaCatalogRepository(
     private suspend fun groupAndScrapeMedia(files: List<MediaFile>): List<ScrapedMediaItem> = coroutineScope {
         val manualBindings = getManualBindings()
         val seriesBuckets = mutableMapOf<String, MutableList<MediaFile>>()
-        val standaloneVideos = mutableListOf<MediaFile>()
-
-        val seasonFolderRegex = Regex("""(?i)\b(?:season|s)\s*0*(\d{1,2})\b""")
+        val movieFiles = mutableListOf<MediaFile>()
 
         for (file in files) {
             val parts = file.path.trim('/').split('/')
-            val fileParsed = FilenameSanitizer.parse(file.name)
-            var detectedKey: String? = null
+            val inMoviesFolder = parts.any { it.equals("MOVIES", ignoreCase = true) }
 
-            for (i in parts.indices.reversed()) {
-                val seg = parts[i]
-                if (seasonFolderRegex.containsMatchIn(seg) && i > 0) {
-                    detectedKey = FilenameSanitizer.parse(parts[i - 1]).seriesKey
-                    break
-                }
+            // Strict Separation: Everything in /MOVIES is treated as a standalone movie
+            if (inMoviesFolder) {
+                movieFiles.add(file)
+                continue
             }
 
-            if (detectedKey == null && fileParsed.isSeries) {
+            // Everything in /ANIME and /SHOWS is treated as a series
+            val fileParsed = FilenameSanitizer.parse(file.name, forceMovie = false)
+            var detectedKey: String? = null
+
+            if (fileParsed.cleanTitle.length > 2 && fileParsed.seriesKey !in ignoredCategoryFolders) {
                 detectedKey = fileParsed.seriesKey
             }
 
-            if (detectedKey != null) {
-                seriesBuckets.getOrPut(detectedKey) { mutableListOf() }.add(file)
-            } else {
-                standaloneVideos.add(file)
-            }
-        }
-
-        // Process Series
-        val seriesDeferred = seriesBuckets.entries.map { (key, fileList) ->
-            async {
-                val sampleFile = fileList.first()
-                val parts = sampleFile.path.trim('/').split('/')
-
-                var cleanShowName = FilenameSanitizer.parse(sampleFile.name).cleanTitle
-                for (i in parts.indices.reversed()) {
-                    if (seasonFolderRegex.containsMatchIn(parts[i]) && i > 0) {
-                        cleanShowName = FilenameSanitizer.parse(parts[i - 1]).cleanTitle
+            if (detectedKey == null) {
+                for (seg in parts.reversed().drop(1)) {
+                    val p = FilenameSanitizer.parse(seg, forceMovie = false)
+                    if (p.cleanTitle.length > 2 && p.seriesKey !in ignoredCategoryFolders && !p.cleanTitle.startsWith("Season", ignoreCase = true)) {
+                        detectedKey = p.seriesKey
                         break
                     }
                 }
+            }
 
-                val binding = manualBindings[key]
-                var forcedType: String? = null
-                if (binding != null) {
-                    val sp = binding.split(":")
-                    if (sp.isNotEmpty()) cleanShowName = sp[0]
-                    if (sp.size >= 2) forcedType = sp[1]
+            if (detectedKey != null && detectedKey !in ignoredCategoryFolders) {
+                seriesBuckets.getOrPut(detectedKey) { mutableListOf() }.add(file)
+            } else {
+                movieFiles.add(file)
+            }
+        }
+
+        // Process Series (ANIME & SHOWS)
+        val seriesDeferred = seriesBuckets.entries.map { (key, fileList) ->
+            async {
+                val sampleFile = fileList.first()
+                val sampleParsed = FilenameSanitizer.parse(sampleFile.name, forceMovie = false)
+
+                var cleanShowName = if (sampleParsed.cleanTitle.length > 2) {
+                    sampleParsed.cleanTitle
+                } else {
+                    val parts = sampleFile.path.trim('/').split('/')
+                    var folderFallback = sampleFile.name.substringBeforeLast('.')
+                    for (seg in parts.reversed().drop(1)) {
+                        val p = FilenameSanitizer.parse(seg)
+                        if (p.cleanTitle.length > 2 && p.seriesKey !in ignoredCategoryFolders && !p.cleanTitle.startsWith("Season", ignoreCase = true)) {
+                            folderFallback = p.cleanTitle
+                            break
+                        }
+                    }
+                    folderFallback
                 }
 
-                val matchResult = scraper.scrapeWithVerification(cleanShowName, null, forcedType)
+                cleanShowName = cleanShowName.replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
+
+                val binding = manualBindings[key]
+                val forcedType = binding?.mediaType ?: "tv"
+                val forcedYear = binding?.year
+                val forcedPoster = binding?.posterUrl
+                val forcedId = binding?.tmdbId
+                if (binding != null) {
+                    cleanShowName = binding.title
+                }
+
+                val matchResult = runCatching {
+                    scraper.scrapeWithVerification(cleanShowName, true, forcedId, forcedType, forcedYear)
+                }.getOrDefault(MatchResult.NoMatch)
+
                 var finalMeta: MediaMetadata? = null
                 var finalEpisodesMap = emptyMap<String, ScrapedEpisode>()
 
@@ -157,20 +214,22 @@ class MediaCatalogRepository(
                         finalEpisodesMap = matchResult.episodes
                     }
                     is MatchResult.Ambiguous -> {
-                        _ambiguousMatchesFlow.emit(AmbiguousPrompt(key, cleanShowName, matchResult.candidates))
+                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, cleanShowName, matchResult.candidates))
                     }
                     is MatchResult.NoMatch -> {
-                        // Prompt manual input if not found in source database
-                        if (binding == null) {
-                            val fallbackSearch = scraper.searchMetadata(cleanShowName)
-                            _ambiguousMatchesFlow.emit(AmbiguousPrompt(key, cleanShowName, fallbackSearch))
-                        }
+                        val fallbackCandidates = scraper.searchMetadata(cleanShowName)
+                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, cleanShowName, fallbackCandidates))
                     }
+                }
+
+                if (forcedPoster != null && finalMeta == null) {
+                    finalMeta = MediaMetadata(cleanShowName, forcedPoster, forcedPoster, forcedYear, listOf("TV Series"))
                 }
 
                 val officialShowTitle = finalMeta?.title ?: cleanShowName
                 val seasonMap = mutableMapOf<Int, MutableList<ProcessedEpisode>>()
                 val sortedFiles = fileList.sortedBy { it.name }
+                val seasonFolderRegex = Regex("""(?i)\b(?:season|s)\s*0*(\d{1,2})\b""")
 
                 for ((idx, epFile) in sortedFiles.withIndex()) {
                     val epParts = epFile.path.trim('/').split('/')
@@ -196,7 +255,14 @@ class MediaCatalogRepository(
                     val epKey = "S${sNum}E${epNum}"
                     val scrapedEp = finalEpisodesMap[epKey]
                     val formattedEp = String.format("S%02dE%02d", sNum, epNum)
-                    val epTitle = if (!scrapedEp?.title.isNullOrBlank()) scrapedEp!!.title else "Episode $epNum"
+
+                    // Always prefer the official database episode title over anything in the local filename
+                    val sTitle = scrapedEp?.title
+                    val epTitle = when {
+                        !sTitle.isNullOrBlank() && !sTitle.startsWith("Episode ", ignoreCase = true) -> sTitle
+                        !epParsed.existingEpisodeTitle.isNullOrBlank() -> epParsed.existingEpisodeTitle
+                        else -> "Episode $epNum"
+                    }
                     val finalEpTitle = "$formattedEp • $epTitle"
 
                     seasonMap.getOrPut(sNum) { mutableListOf() }.add(
@@ -221,7 +287,7 @@ class MediaCatalogRepository(
                     title = officialShowTitle,
                     posterUrl = finalMeta?.posterUrl,
                     backdropUrl = finalMeta?.backdropUrl ?: finalMeta?.posterUrl,
-                    releaseYear = finalMeta?.releaseYear,
+                    releaseYear = forcedYear ?: finalMeta?.releaseYear,
                     isSeries = true,
                     primaryFile = firstPlayable,
                     seasons = seasonGroups,
@@ -230,39 +296,41 @@ class MediaCatalogRepository(
             }
         }
 
-        // Process Movies
-        val movieDeferred = standaloneVideos.map { file ->
+        // Process Movies (/MOVIES)
+        val movieDeferred = movieFiles.map { file ->
             async {
-                val clean = FilenameSanitizer.parse(file.name).cleanTitle
-                val key = clean.lowercase().replace(Regex("[^a-z0-9]"), "")
+                val parsed = FilenameSanitizer.parse(file.name, forceMovie = true)
+                val key = parsed.seriesKey.ifBlank { file.name.hashCode().toString() }
 
-                var queryName = clean
-                var forcedType: String? = null
-                var forcedYear: String? = null
-
+                var queryName = parsed.cleanTitle.replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
                 val binding = manualBindings[key]
+                val forcedType = "movie"
+                val forcedYear = binding?.year ?: parsed.year
+                val forcedPoster = binding?.posterUrl
+                val forcedId = binding?.tmdbId
                 if (binding != null) {
-                    val sp = binding.split(":")
-                    if (sp.isNotEmpty()) queryName = sp[0]
-                    if (sp.size >= 2) forcedType = sp[1]
-                    if (sp.size >= 3) forcedYear = sp[2]
+                    queryName = binding.title
                 }
 
-                val matchResult = scraper.scrapeWithVerification(queryName, null, forcedType)
+                val matchResult = runCatching {
+                    scraper.scrapeWithVerification(queryName, false, forcedId, forcedType, forcedYear)
+                }.getOrDefault(MatchResult.NoMatch)
+
                 var finalMeta: MediaMetadata? = null
 
                 when (matchResult) {
                     is MatchResult.ConfidentMatch -> finalMeta = matchResult.metadata
                     is MatchResult.Ambiguous -> {
-                        _ambiguousMatchesFlow.emit(AmbiguousPrompt(key, queryName, matchResult.candidates))
+                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, matchResult.candidates))
                     }
                     is MatchResult.NoMatch -> {
-                        // Prompt manual input if not found in source database
-                        if (binding == null) {
-                            val fallbackSearch = scraper.searchMetadata(queryName)
-                            _ambiguousMatchesFlow.emit(AmbiguousPrompt(key, queryName, fallbackSearch))
-                        }
+                        val fallbackCandidates = scraper.searchMetadata(queryName)
+                        _ambiguousMatchesFlow.tryEmit(AmbiguousPrompt(key, queryName, fallbackCandidates))
                     }
+                }
+
+                if (forcedPoster != null && finalMeta == null) {
+                    finalMeta = MediaMetadata(queryName, forcedPoster, forcedPoster, forcedYear, listOf("Movie"))
                 }
 
                 val officialMovieTitle = finalMeta?.title ?: queryName
@@ -283,35 +351,55 @@ class MediaCatalogRepository(
         (seriesDeferred + movieDeferred).awaitAll()
     }
 
-    // Skips files that are already correctly structured
-    fun generateRenamePlan(item: ScrapedMediaItem, customTitle: String? = null, customYear: String? = null): List<RenameOperation> {
+    // STRICT DATABASE NAMING CONTRACT:
+    // Anime: /ANIME/{Database Title}/{Database Title Season X}/{Database Title - SxxExx - Database Episode Name.mkv}
+    // Shows: /SHOWS/{Database Title}/{Database Title Season X}/{Database Title - SxxExx - Database Episode Name.mkv}
+    // Movies: /MOVIES/{Database Movie Title (Year)}/{Database Movie Title (Year).mkv}
+    fun generateRenamePlan(
+        item: ScrapedMediaItem,
+        customTitle: String? = null,
+        customYear: String? = null,
+        isManualOverride: Boolean = false
+    ): List<RenameOperation> {
         val plan = mutableListOf<RenameOperation>()
-        val cleanTitle = sanitizeFsName(customTitle ?: item.title)
+
+        // If item failed to match the database and is not a manual override, skip auto-rename so user can resolve it manually
+        if (item.metadata == null && !isManualOverride) {
+            return emptyList()
+        }
+
+        var cleanTitle = sanitizeFsName(customTitle ?: item.metadata?.title ?: item.title)
+        cleanTitle = cleanTitle.replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
+
+        if (cleanTitle.lowercase() in ignoredCategoryFolders || cleanTitle.isBlank()) {
+            return emptyList()
+        }
 
         if (item.isSeries) {
             for (season in item.seasons) {
                 val seasonFolderName = "$cleanTitle Season ${season.seasonNumber}"
+
                 for (ep in season.episodes) {
                     val oldPath = ep.file.path
 
-                    // SKIP IF ALREADY STRUCTURED
-                    if (FilenameSanitizer.isSeriesAlreadyStructured(oldPath)) {
-                        continue
+                    val rootSection = if (oldPath.contains("/ANIME", ignoreCase = true)) {
+                        "/ANIME"
+                    } else {
+                        "/SHOWS"
                     }
 
-                    val parts = oldPath.trim('/').split('/')
-                    val rootSection = if (parts.isNotEmpty() && parts[0].uppercase() in setOf("ANIME", "SHOWS", "TV", "TV SHOWS")) {
-                        "/" + parts[0]
-                    } else ""
+                    var epTitleClean = sanitizeFsName(ep.title.substringAfter("•").trim())
+                    epTitleClean = epTitleClean.replace(Regex("[=+\\[\\]]"), "").replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
 
-                    val epTitleClean = ep.title.substringAfter("•").trim().let { sanitizeFsName(it) }
                     val newFileName = if (epTitleClean.startsWith("Episode ", ignoreCase = true) || epTitleClean.isBlank()) {
                         String.format("%s - S%02dE%02d.mkv", cleanTitle, season.seasonNumber, ep.episodeNumber)
                     } else {
                         String.format("%s - S%02dE%02d - %s.mkv", cleanTitle, season.seasonNumber, ep.episodeNumber, epTitleClean)
                     }
 
+                    // Strict 3-tier path: /CATEGORY/{Title}/{Title Season X}/{Title - SxxExx - EpName.mkv}
                     val newFullPath = "$rootSection/$cleanTitle/$seasonFolderName/$newFileName"
+
                     if (oldPath != newFullPath) {
                         plan.add(RenameOperation(oldPath, newFullPath, ep.file.name, newFileName))
                     }
@@ -319,25 +407,12 @@ class MediaCatalogRepository(
             }
         } else {
             val oldPath = item.primaryFile.path
-
-            // SKIP IF ALREADY STRUCTURED
-            if (FilenameSanitizer.isMovieAlreadyStructured(oldPath)) {
-                return emptyList()
-            }
-
-            val parts = oldPath.trim('/').split('/')
-            val rootSection = if (parts.isNotEmpty() && parts[0].uppercase() in setOf("MOVIES", "FILMS")) {
-                "/" + parts[0]
-            } else if (parts.size > 1) {
-                "/" + parts.first()
-            } else ""
-
-            val year = customYear ?: item.releaseYear
+            val year = customYear ?: item.metadata?.releaseYear ?: item.releaseYear
             val yearSuffix = if (!year.isNullOrBlank()) " ($year)" else ""
             val movieFolderName = "$cleanTitle$yearSuffix"
             val newFileName = "$cleanTitle$yearSuffix.mkv"
 
-            val newFullPath = "$rootSection/$movieFolderName/$newFileName"
+            val newFullPath = "/MOVIES/$movieFolderName/$newFileName"
             if (oldPath != newFullPath) {
                 plan.add(RenameOperation(oldPath, newFullPath, item.primaryFile.name, newFileName))
             }
@@ -346,6 +421,6 @@ class MediaCatalogRepository(
     }
 
     private fun sanitizeFsName(name: String): String {
-        return name.replace(Regex("""[/\\?%*:|"<>]"""), "").trim()
+        return name.replace(Regex("[/\\\\?%*:|\"<>=+]"), "").trim()
     }
 }

@@ -1,7 +1,9 @@
 package com.vidlab.app.ui.catalog
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,8 +13,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,11 +25,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.vidlab.app.data.model.CastMember
 import com.vidlab.app.data.model.MediaFile
 import com.vidlab.app.data.model.ScrapedMediaItem
 
@@ -34,31 +40,65 @@ private val DeepPurpleBg = Color(0xFF09070F)
 private val SurfaceDark = Color(0xFF141120)
 private val BorderPurple = Color(0xFF26203B)
 private val AccentViolet = Color(0xFF8B5CF6)
-private val SecondaryText = Color(0xFF9E95B8)
 
 @Composable
 fun MediaDetailScreen(
     item: ScrapedMediaItem,
-    onBack: () -> Unit,
-    onPlayFile: (MediaFile) -> Unit,
-    onRematch: (ScrapedMediaItem) -> Unit,
-    onRenamePermanently: (ScrapedMediaItem) -> Unit,
-    modifier: Modifier = Modifier
+    onBack: () -> Unit = {},
+    onPlayFile: (MediaFile) -> Unit = {},
+    onPlay: (MediaFile) -> Unit = onPlayFile,
+    onRematch: (ScrapedMediaItem) -> Unit = {},
+    onRenamePermanently: (ScrapedMediaItem) -> Unit = {},
+    onBackClick: () -> Unit = onBack,
+    onPlayClick: (MediaFile) -> Unit = onPlay,
+    onOpenExternalPlayer: ((MediaFile) -> Unit)? = null,
+    onRenameClick: () -> Unit = { onRenamePermanently(item) },
+    onFixMatchClick: () -> Unit = { onRematch(item) }
 ) {
-    var selectedSeasonIndex by remember { mutableIntStateOf(0) }
-    val currentSeason = item.seasons.getOrNull(selectedSeasonIndex)
+    val context = LocalContext.current
+    var selectedSeasonIndex by remember { mutableStateOf(0) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showPlotExpanded by remember { mutableStateOf(false) }
+    var showFileDetailsDialog by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier.fillMaxSize().background(DeepPurpleBg)) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+    val launchExternal: (MediaFile) -> Unit = { file ->
+        if (onOpenExternalPlayer != null) {
+            onOpenExternalPlayer(file)
+        } else {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(Uri.parse("http://127.0.0.1:8080${file.path}"), "video/*")
+                putExtra(Intent.EXTRA_TITLE, file.name)
+            }
+            runCatching { context.startActivity(intent) }
+        }
+    }
+
+    val seasons = item.seasons
+    val currentSeason = seasons.getOrNull(selectedSeasonIndex)
+    val heroImg = item.backdropUrl ?: item.posterUrl
+    val metadata = item.metadata
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DeepPurpleBg)
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 40.dp)
+        ) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().height(380.dp)) {
-                    val heroImg = item.backdropUrl ?: item.posterUrl
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(350.dp)
+                ) {
                     if (!heroImg.isNullOrBlank()) {
                         AsyncImage(
                             model = heroImg,
-                            contentDescription = item.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
                         )
                     }
 
@@ -67,9 +107,12 @@ fun MediaDetailScreen(
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    colors = listOf(Color(0x5509070F), Color.Transparent, DeepPurpleBg),
-                                    startY = 0f,
-                                    endY = 1000f
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.25f),
+                                        DeepPurpleBg.copy(alpha = 0.78f),
+                                        DeepPurpleBg
+                                    ),
+                                    startY = 140f
                                 )
                             )
                     )
@@ -83,173 +126,478 @@ fun MediaDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = onBack,
-                            modifier = Modifier.size(40.dp).background(Color(0x66000000), CircleShape)
+                            onClick = onBackClick,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.55f))
                         ) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
                         }
 
-                        IconButton(
-                            onClick = { onRematch(item) },
-                            modifier = Modifier.size(40.dp).background(Color(0x66000000), CircleShape)
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Fix Match", tint = Color.White)
+                        Box {
+                            IconButton(
+                                onClick = { menuExpanded = true },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More Options",
+                                    tint = Color.White
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                                modifier = Modifier.background(SurfaceDark)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Rename & Restructure Files", color = Color.White) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onRenameClick()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Fix Metadata Match", color = Color.White) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onFixMatchClick()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Open in External Player (MPV)", color = Color.White) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        launchExternal(item.primaryFile)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Storage & File Info", color = Color.White) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showFileDetailsDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
 
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                            .padding(horizontal = 20.dp, vertical = 14.dp)
                     ) {
                         Text(
                             text = item.title,
                             color = Color.White,
-                            fontSize = 24.sp,
+                            fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val metaSub = buildString {
-                            item.releaseYear?.let { append(it) }
-                            if (item.isSeries && item.seasons.isNotEmpty()) {
-                                append(" • ${item.seasons.size} Seasons • ${item.totalEpisodesCount} Eps")
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (metadata?.rating != null && metadata.rating > 0.0) {
+                                MetaBadge(text = "★ ${String.format("%.1f", metadata.rating)}")
+                            }
+                            if (!item.releaseYear.isNullOrBlank()) {
+                                MetaBadge(text = item.releaseYear!!)
+                            }
+                            if (item.isSeries) {
+                                MetaBadge(text = "${seasons.size} Season${if (seasons.size > 1) "s" else ""} • ${item.totalEpisodesCount} Eps")
+                            } else {
+                                val sizeGb = String.format("%.2f GB", item.primaryFile.size / 1024.0 / 1024.0 / 1024.0)
+                                MetaBadge(text = "Movie • $sizeGb")
                             }
                         }
-                        Text(text = metaSub, color = SecondaryText, fontSize = 12.sp)
+
+                        if (!metadata?.genres.isNullOrEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = metadata!!.genres.joinToString(" • "),
+                                color = Color(0xFFB5ADD1),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
             }
 
-            // Play & Permanent Rename Row
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
-                        onClick = { onPlayFile(item.primaryFile) },
+                        onClick = { onPlayClick(item.primaryFile) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f).height(48.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Play", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = { onRenamePermanently(item) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F1A30)),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
-                            .border(1.dp, BorderPurple, RoundedCornerShape(8.dp))
+                            .height(52.dp)
                     ) {
-                        Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = AccentViolet)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Rename Files", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = DeepPurpleBg,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (item.isSeries) "Play S01E01" else "Play Movie",
+                            color = DeepPurpleBg,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { launchExternal(item.primaryFile) },
+                        border = BorderStroke(1.dp, BorderPurple),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark),
+                        modifier = Modifier
+                            .height(52.dp)
+                            .width(56.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = "External Player",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            if (!metadata?.overview.isNullOrBlank()) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Overview",
+                                color = Color.White,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (showPlotExpanded) "Collapse" else "Expand",
+                                color = AccentViolet,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { showPlotExpanded = !showPlotExpanded }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = metadata!!.overview!!,
+                            color = Color(0xFFD0C9E6),
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                            maxLines = if (showPlotExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { showPlotExpanded = !showPlotExpanded }
+                        )
                     }
                 }
             }
 
-            if (item.isSeries && item.seasons.isNotEmpty()) {
+            if (!metadata?.cast.isNullOrEmpty()) {
+                item {
+                    Column(modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) {
+                        Text(
+                            text = "Cast & Crew",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                        )
+
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(metadata!!.cast) { member ->
+                                CastItemCard(member)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (item.isSeries && seasons.isNotEmpty()) {
                 item {
                     Column(modifier = Modifier.padding(top = 12.dp)) {
                         Text(
                             text = "Seasons & Episodes",
                             color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 20.dp)
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 20.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(item.seasons.indices.toList()) { idx ->
-                                val s = item.seasons[idx]
+                            items(seasons.size) { idx ->
+                                val s = seasons[idx]
                                 val isSelected = idx == selectedSeasonIndex
                                 Surface(
+                                    onClick = { selectedSeasonIndex = idx },
                                     color = if (isSelected) AccentViolet else SurfaceDark,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .border(0.5.dp, BorderPurple, RoundedCornerShape(8.dp))
-                                        .clickable { selectedSeasonIndex = idx }
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = if (!isSelected) BorderStroke(1.dp, BorderPurple) else null
                                 ) {
                                     Text(
-                                        text = "Season ${s.seasonNumber}",
-                                        color = Color.White,
+                                        text = "Season ${s.seasonNumber} (${s.episodes.size})",
+                                        color = if (isSelected) Color.White else Color(0xFF9E95B8),
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                                     )
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
 
-                currentSeason?.episodes?.let { eps ->
-                    items(eps) { ep ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onPlayFile(ep.file) }
-                                .padding(horizontal = 20.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(110.dp)
-                                    .height(65.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(SurfaceDark)
-                            ) {
-                                if (!ep.thumbnail.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = ep.thumbnail,
-                                        contentDescription = ep.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color(0x33000000)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-                                }
-                            }
+                if (currentSeason != null) {
+                    items(currentSeason.episodes) { ep ->
+                        val sizeStr = if (ep.file.size > 0) {
+                            String.format("%.2f GB", ep.file.size / 1024.0 / 1024.0 / 1024.0)
+                        } else "WebDAV Stream"
 
-                            Spacer(modifier = Modifier.width(14.dp))
+                        val cleanEpisodeName = ep.title
+                            .substringAfter("•", ep.title)
+                            .replace(Regex("""(?i)^S\d{1,2}E\d{1,3}\s*[-•:]?\s*"""), "")
+                            .trim()
+                            .ifEmpty { "Episode ${ep.episodeNumber}" }
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = ep.title,
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Season ${ep.seasonNumber} • Episode ${ep.episodeNumber}",
-                                    color = SecondaryText,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
+                        EpisodeCard(
+                            episodeTitle = cleanEpisodeName,
+                            seasonNumber = ep.seasonNumber,
+                            episodeNumber = ep.episodeNumber,
+                            thumbnailUrl = ep.thumbnail,
+                            fileSize = sizeStr,
+                            onPlayClick = { onPlayClick(ep.file) },
+                            onExternalClick = { launchExternal(ep.file) }
+                        )
                     }
                 }
+            }
+        }
+
+        if (showFileDetailsDialog) {
+            AlertDialog(
+                onDismissRequest = { showFileDetailsDialog = false },
+                containerColor = SurfaceDark,
+                title = { Text("Storage & File Info", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Title: ${item.title}", color = Color.White, fontSize = 13.sp)
+                        Text("Path: ${item.primaryFile.path}", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                        val sizeMb = String.format("%.2f MB", item.primaryFile.size / 1024.0 / 1024.0)
+                        Text("Primary File Size: $sizeMb", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showFileDetailsDialog = false }) {
+                        Text("Close", color = AccentViolet)
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CastItemCard(member: CastMember) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(82.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(68.dp)
+                .clip(CircleShape)
+                .background(SurfaceDark),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!member.profileUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = member.profileUrl,
+                    contentDescription = member.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = Color(0xFF7B7394),
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = member.name,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 13.sp
+        )
+
+        if (member.role.isNotBlank()) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = member.role,
+                color = Color(0xFF9E95B8),
+                fontSize = 10.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetaBadge(text: String) {
+    Surface(
+        color = SurfaceDark.copy(alpha = 0.85f),
+        shape = RoundedCornerShape(6.dp),
+        border = BorderStroke(1.dp, BorderPurple)
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFFDCD6EC),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun EpisodeCard(
+    episodeTitle: String,
+    seasonNumber: Int,
+    episodeNumber: Int,
+    thumbnailUrl: String?,
+    fileSize: String,
+    onPlayClick: () -> Unit,
+    onExternalClick: () -> Unit
+) {
+    Surface(
+        onClick = onPlayClick,
+        color = SurfaceDark,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(0.5.dp, BorderPurple),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(114.dp)
+                    .height(66.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BorderPurple)
+            ) {
+                if (!thumbnailUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .align(Alignment.Center),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 2.dp)
+            ) {
+                Text(
+                    text = episodeTitle,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "S${seasonNumber}E${episodeNumber} •$fileSize",
+                    color = Color(0xFF9E95B8),
+                    fontSize = 11.sp
+                )
+            }
+
+            IconButton(onClick = onExternalClick) {
+                Icon(
+                    imageVector = Icons.Default.OpenInNew,
+                    contentDescription = "Open in External Player",
+                    tint = Color(0xFF9E95B8),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

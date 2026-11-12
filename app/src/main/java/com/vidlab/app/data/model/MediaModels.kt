@@ -12,12 +12,22 @@ data class MediaFile(
 )
 
 @Serializable
+data class CastMember(
+    val name: String,
+    val role: String,
+    val profileUrl: String? = null
+)
+
+@Serializable
 data class MediaMetadata(
     val title: String,
     val posterUrl: String? = null,
     val backdropUrl: String? = null,
     val releaseYear: String? = null,
-    val genres: List<String> = emptyList()
+    val genres: List<String> = emptyList(),
+    val rating: Double? = null,
+    val overview: String? = null,
+    val cast: List<CastMember> = emptyList()
 )
 
 @Serializable

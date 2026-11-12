@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -23,9 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val BgDark = Color(0xFF09070F)
-private val SurfaceDark = Color(0xFF141120)
-private val BorderPurple = Color(0xFF26203B)
+private val BgDark = Color(0xFF141120)
+private val SurfaceDark = Color(0xFF1A1629)
+private val BorderPurple = Color(0xFF2E2647)
 private val AccentViolet = Color(0xFF8B5CF6)
 private val TextSecondary = Color(0xFF9E95B8)
 
@@ -44,8 +43,7 @@ fun AutoRenameScreen(
         modifier = modifier
             .fillMaxSize()
             .background(BgDark)
-            .statusBarsPadding()
-            .padding(20.dp)
+            .padding(16.dp)
     ) {
         // App Header
         Row(
@@ -55,13 +53,13 @@ fun AutoRenameScreen(
         ) {
             Column {
                 Text(
-                    text = "VidLab Auto-Renamer",
+                    text = "Storage Auto-Renamer",
                     color = Color.White,
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Simkl-Powered Remote Media Organizer",
+                    text = "WebDAV Server-Side Reorganization",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -82,7 +80,7 @@ fun AutoRenameScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Progress Card
         Surface(
@@ -92,7 +90,7 @@ fun AutoRenameScreen(
                 .fillMaxWidth()
                 .border(0.5.dp, BorderPurple, RoundedCornerShape(12.dp))
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -101,7 +99,7 @@ fun AutoRenameScreen(
                     Text(
                         text = state.currentStep,
                         color = Color.White,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     if (state.totalCount > 0) {
@@ -176,7 +174,7 @@ fun AutoRenameScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Activity Logs
         Text(
