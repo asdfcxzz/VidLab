@@ -22,7 +22,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import com.vidlab.app.data.prefs.PlayerPreferences
 import com.vidlab.app.data.prefs.WatchProgressStore
+import androidx.media3.extractor.metadata.id3.ChapterFrame
+import com.vidlab.app.data.remote.SegmentType
+import com.vidlab.app.data.remote.SkipSegment
 import com.vidlab.app.data.remote.SimklManager
+import com.vidlab.app.data.remote.SkipSegmentManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -198,6 +202,8 @@ private fun ModernPlayerScreen(
     )
     var playbackSpeed by remember { mutableFloatStateOf(playerPrefs.defaultSpeed) }
     var simklScrobbled by remember { mutableStateOf(false) }
+    var skipSegments by remember { mutableStateOf<List<SkipSegment>>(emptyList()) }
+    var autoSkippedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var customScale by remember { mutableFloatStateOf(1f) }
     var customOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -281,6 +287,23 @@ private fun ModernPlayerScreen(
                 }
             }
 
+            override fun onMetadata(metadata: androidx.media3.common.Metadata) {
+                if (!playerPrefs.skipSegmentsEnabled) return
+                val chapters = mutableListOf<SkipSegment>()
+                for (i in 0 until metadata.length()) {
+                    val entry = metadata.get(i)
+                    if (entry is ChapterFrame && entry.endTimeMs > entry.startTimeMs) {
+                        val chapTitle = entry.chapterId ?: "Chapter"
+                        val segType = SkipSegmentManager.classifyChapterTitle(chapTitle)
+                        chapters.add(SkipSegment(entry.startTimeMs.toLong(), entry.endTimeMs.toLong(), segType, chapTitle))
+                    }
+                }
+                if (chapters.isNotEmpty()) {
+                    val nonChap = skipSegments.filter { it.type != SegmentType.CHAPTER }
+                    skipSegments = (nonChap + chapters).sortedBy { it.startMs }
+                }
+            }
+
             override fun onTracksChanged(tracks: Tracks) {
                 refreshTracks(tracks)
             }
@@ -294,10 +317,33 @@ private fun ModernPlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
+    LaunchedEffect(title, duration) {
+        if (playerPrefs.skipSegmentsEnabled && title.isNotBlank()) {
+            val fetched = SkipSegmentManager.fetchSegmentsForMedia(title, duration)
+            if (fetched.isNotEmpty()) {
+                val existingChapters = skipSegments.filter { it.type == SegmentType.CHAPTER }
+                skipSegments = (fetched + existingChapters).sortedBy { it.startMs }
+            }
+        }
+    }
+
     LaunchedEffect(isPlaying) {
         while (true) {
             currentPos = player.currentPosition.coerceAtLeast(0L)
             if (player.duration > 0L) duration = player.duration
+            if (playerPrefs.skipSegmentsEnabled && playerPrefs.autoSkipSegments && duration > 0L) {
+                val activeAuto = skipSegments.firstOrNull { seg ->
+                    seg.type != SegmentType.CHAPTER &&
+                        currentPos in seg.startMs until (seg.endMs - 1500L) &&
+                        seg.startMs !in autoSkippedIds
+                }
+                if (activeAuto != null) {
+                    autoSkippedIds = autoSkippedIds + activeAuto.startMs
+                    player.seekTo(activeAuto.endMs)
+                    currentPos = activeAuto.endMs
+                    gestureOverlayText = "Auto-skipped ${activeAuto.type.label.removePrefix("Skip ")}"
+                }
+            }
             if (duration > 0L && currentPos > 0L && (currentPos / 1000L) % 5L == 0L) {
                 if (filePath.isNotBlank()) WatchProgressStore(context).saveProgress(filePath, currentPos, duration)
                 if (!simklScrobbled && currentPos.toFloat() / duration.toFloat() >= 0.80f) {
@@ -572,168 +618,255 @@ private fun ModernPlayerScreen(
             }
         }
 
+        val activeSkipSegment = remember(currentPos, skipSegments, playerPrefs.skipSegmentsEnabled) {
+            if (!playerPrefs.skipSegmentsEnabled) null
+            else skipSegments.firstOrNull { seg ->
+                seg.type != SegmentType.CHAPTER && currentPos in seg.startMs until (seg.endMs - 1000L)
+            }
+        }
+
+        if (!controlsVisible && !isLocked && activeSkipSegment != null) {
+            Surface(
+                onClick = {
+                    player.seekTo(activeSkipSegment.endMs)
+                    currentPos = activeSkipSegment.endMs
+                },
+                color = Color(0xE61C2230),
+                shape = RoundedCornerShape(22.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .safeDrawingPadding()
+                    .padding(end = 24.dp, bottom = 28.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Forward10,
+                        contentDescription = null,
+                        tint = Color(0xFF90CAF9),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = activeSkipSegment.type.label,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
         AnimatedVisibility(
             visible = controlsVisible && !isLocked,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
+            val hudPillBg = Color(0xCC1B202C)
+            val hudCircleBg = Color(0xCC1B202C)
+
             Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+                // TOP BAR
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
-                            )
-                        )
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(hudCircleBg)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    Text(
-                        text = title,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp)
-                    )
-
                     Surface(
-                        onClick = { showSpeedDialog = true },
-                        color = Color.White.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(8.dp)
+                        color = hudPillBg,
+                        shape = RoundedCornerShape(22.dp),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
                         Text(
-                            text = "${playbackSpeed}x",
+                            text = title,
                             color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.weight(1f))
 
-                    Surface(
-                        onClick = { resizeModeIndex = (resizeModeIndex + 1) % resizeModes.size },
-                        color = Color.White.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(8.dp)
+                    IconButton(
+                        onClick = { showAudioDialog = true },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(hudCircleBg)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AspectRatio,
-                                contentDescription = "Aspect Ratio",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = resizeModes[resizeModeIndex].second,
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = "Audio Track",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    IconButton(onClick = { isLocked = true }) {
+                    IconButton(
+                        onClick = { showSubtitleDialog = true },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(hudCircleBg)
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.LockOpen,
-                            contentDescription = "Lock Controls",
-                            tint = Color.White
+                            imageVector = Icons.Default.Subtitles,
+                            contentDescription = "Subtitles",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
 
-                Row(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(44.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // CENTER PLAY/PAUSE
+                IconButton(
+                    onClick = { if (player.isPlaying) player.pause() else player.play() },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(66.dp)
+                        .clip(CircleShape)
+                        .background(hudCircleBg)
                 ) {
-                    IconButton(
-                        onClick = {
-                            val target = (player.currentPosition - 10_000L).coerceAtLeast(0L)
-                            player.seekTo(target)
-                            currentPos = target
-                        },
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Replay10,
-                            contentDescription = "Rewind 10s",
-                            tint = Color.White,
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { if (player.isPlaying) player.pause() else player.play() },
-                        modifier = Modifier
-                            .size(70.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF8B5CF6))
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(38.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = {
-                            val maxDur = if (duration > 0) duration else Long.MAX_VALUE
-                            val target = (player.currentPosition + 10_000L).coerceAtMost(maxDur)
-                            player.seekTo(target)
-                            currentPos = target
-                        },
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Forward10,
-                            contentDescription = "Forward 10s",
-                            tint = Color.White,
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(34.dp)
+                    )
                 }
 
+                // BOTTOM CONTROLS + SEGMENTED SEEKBAR
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))
                             )
                         )
-                        .padding(horizontal = 24.dp, vertical = 14.dp)
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        IconButton(
+                            onClick = { isLocked = true },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(hudCircleBg)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LockOpen,
+                                contentDescription = "Lock Controls",
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
+                        Surface(
+                            onClick = { showSpeedDialog = true },
+                            color = hudCircleBg,
+                            shape = CircleShape,
+                            modifier = Modifier.height(42.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            ) {
+                                Text(
+                                    text = "${playbackSpeed}x",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        if (activeSkipSegment != null) {
+                            Surface(
+                                onClick = {
+                                    player.seekTo(activeSkipSegment.endMs)
+                                    currentPos = activeSkipSegment.endMs
+                                },
+                                color = Color(0xE6222838),
+                                shape = RoundedCornerShape(21.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF90CAF9).copy(alpha = 0.5f)),
+                                modifier = Modifier.height(42.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp)
+                                ) {
+                                    Text(
+                                        text = activeSkipSegment.type.label,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            onClick = { resizeModeIndex = (resizeModeIndex + 1) % resizeModes.size },
+                            color = hudCircleBg,
+                            shape = CircleShape,
+                            modifier = Modifier.height(42.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AspectRatio,
+                                    contentDescription = "Aspect Ratio",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = resizeModes[resizeModeIndex].second,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -742,75 +875,101 @@ private fun ModernPlayerScreen(
                             text = formatDuration(currentPos),
                             color = Color.White,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.SemiBold
                         )
 
-                        Slider(
-                            value = if (duration > 0) currentPos.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
-                            onValueChange = { newVal ->
-                                currentPos = newVal.toLong()
-                                player.seekTo(currentPos)
-                            },
-                            valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF8B5CF6),
-                                activeTrackColor = Color(0xFF8B5CF6),
-                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                            ),
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 12.dp)
-                        )
+                                .height(28.dp)
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val totalDur = duration.coerceAtLeast(1L).toFloat()
+                            val progressFraction = (currentPos.toFloat() / totalDur).coerceIn(0f, 1f)
+
+                            androidx.compose.foundation.Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(14.dp)
+                            ) {
+                                val trackH = 6.dp.toPx()
+                                val topY = (size.height - trackH) / 2f
+                                val corner = androidx.compose.ui.geometry.CornerRadius(trackH / 2f, trackH / 2f)
+
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.22f),
+                                    topLeft = Offset(0f, topY),
+                                    size = androidx.compose.ui.geometry.Size(size.width, trackH),
+                                    cornerRadius = corner
+                                )
+
+                                if (playerPrefs.skipSegmentsEnabled && duration > 0L) {
+                                    for (seg in skipSegments) {
+                                        val sFrac = (seg.startMs.toFloat() / totalDur).coerceIn(0f, 1f)
+                                        val eFrac = (seg.endMs.toFloat() / totalDur).coerceIn(0f, 1f)
+                                        val segW = ((eFrac - sFrac) * size.width).coerceAtLeast(2.dp.toPx())
+                                        val segColor = when (seg.type) {
+                                            SegmentType.INTRO, SegmentType.RECAP -> Color(0xFFD97724)
+                                            SegmentType.OUTRO -> Color(0xFF7E57C2)
+                                            SegmentType.CHAPTER -> Color.White.copy(alpha = 0.45f)
+                                        }
+                                        if (seg.type == SegmentType.CHAPTER) {
+                                            drawRect(
+                                                color = Color.Black.copy(alpha = 0.7f),
+                                                topLeft = Offset(sFrac * size.width, topY),
+                                                size = androidx.compose.ui.geometry.Size(2.dp.toPx(), trackH)
+                                            )
+                                        } else {
+                                            drawRect(
+                                                color = segColor,
+                                                topLeft = Offset(sFrac * size.width, topY),
+                                                size = androidx.compose.ui.geometry.Size(segW, trackH)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                drawRoundRect(
+                                    color = Color(0xFF90CAF9),
+                                    topLeft = Offset(0f, topY),
+                                    size = androidx.compose.ui.geometry.Size(size.width * progressFraction, trackH),
+                                    cornerRadius = corner
+                                )
+
+                                val thumbW = 5.dp.toPx()
+                                val thumbH = 16.dp.toPx()
+                                val thumbX = (size.width * progressFraction - thumbW / 2f).coerceIn(0f, size.width - thumbW)
+                                drawRoundRect(
+                                    color = Color(0xFF90CAF9),
+                                    topLeft = Offset(thumbX, (size.height - thumbH) / 2f),
+                                    size = androidx.compose.ui.geometry.Size(thumbW, thumbH),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbW / 2f, thumbW / 2f)
+                                )
+                            }
+
+                            Slider(
+                                value = if (duration > 0) currentPos.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
+                                onValueChange = { newVal ->
+                                    currentPos = newVal.toLong()
+                                    player.seekTo(currentPos)
+                                },
+                                valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.Transparent,
+                                    activeTrackColor = Color.Transparent,
+                                    inactiveTrackColor = Color.Transparent
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         Text(
                             text = formatDuration(duration),
                             color = Color.White,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.SemiBold
                         )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val activeAudioLabel = audioTracks.firstOrNull { it.isSelected }?.language?.uppercase() ?: "AUTO"
-                        TextButton(onClick = { showAudioDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Audiotrack,
-                                contentDescription = "Audio Track",
-                                tint = Color(0xFF8B5CF6),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Audio ($activeAudioLabel)",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        val activeSub = subtitleTracks.firstOrNull { it.isSelected && it.id != "sub_off" }
-                        val subLabel = activeSub?.language?.uppercase() ?: "OFF"
-                        TextButton(onClick = { showSubtitleDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Subtitles",
-                                tint = Color(0xFF8B5CF6),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Subtitles ($subLabel)",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
                     }
                 }
             }

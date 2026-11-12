@@ -49,6 +49,14 @@ class PlayerPreferences(context: Context) {
         get() = prefs.getBoolean("brightness_gesture_enabled", false)
         set(value) = prefs.edit().putBoolean("brightness_gesture_enabled", value).apply()
 
+    var skipSegmentsEnabled: Boolean
+        get() = prefs.getBoolean("skip_segments_enabled", true)
+        set(value) = prefs.edit().putBoolean("skip_segments_enabled", value).apply()
+
+    var autoSkipSegments: Boolean
+        get() = prefs.getBoolean("auto_skip_segments", false)
+        set(value) = prefs.edit().putBoolean("auto_skip_segments", value).apply()
+
     fun resetToDefaults() {
         prefs.edit().clear().apply()
     }

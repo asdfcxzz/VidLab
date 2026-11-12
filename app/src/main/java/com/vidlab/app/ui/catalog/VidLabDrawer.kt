@@ -63,6 +63,8 @@ fun VidLabDrawerContent(
     var preferFfmpeg by remember { mutableStateOf(playerPrefs.preferFfmpegAudio) }
     var volGesture by remember { mutableStateOf(playerPrefs.volumeGestureEnabled) }
     var brightGesture by remember { mutableStateOf(playerPrefs.brightnessGestureEnabled) }
+    var skipEnabled by remember { mutableStateOf(playerPrefs.skipSegmentsEnabled) }
+    var autoSkip by remember { mutableStateOf(playerPrefs.autoSkipSegments) }
 
     var subSize by remember { mutableFloatStateOf(playerPrefs.subtitleFontSizeSp) }
     var subColorIdx by remember { mutableIntStateOf(playerPrefs.subtitleColorIndex) }
@@ -506,6 +508,60 @@ fun VidLabDrawerContent(
                 }
             }
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("SKIP INTRO & OUTRO", color = Color(0xFF9E95B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Show Skip Intro/Outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("Fetch segments & show skip button", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = skipEnabled,
+                            onCheckedChange = {
+                                skipEnabled = it
+                                playerPrefs.skipSegmentsEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                        )
+                    }
+
+                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Skip Intro & Outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("Jump past segments automatically", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = autoSkip,
+                            enabled = skipEnabled,
+                            onCheckedChange = {
+                                autoSkip = it
+                                playerPrefs.autoSkipSegments = it
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             OutlinedButton(
@@ -518,6 +574,8 @@ fun VidLabDrawerContent(
                     preferFfmpeg = playerPrefs.preferFfmpegAudio
                     volGesture = playerPrefs.volumeGestureEnabled
                     brightGesture = playerPrefs.brightnessGestureEnabled
+                    skipEnabled = playerPrefs.skipSegmentsEnabled
+                    autoSkip = playerPrefs.autoSkipSegments
                     subSize = playerPrefs.subtitleFontSizeSp
                     subColorIdx = playerPrefs.subtitleColorIndex
                     subBgBox = playerPrefs.subtitleBgBox
