@@ -53,7 +53,7 @@ fun VidLabDrawerContent(
     val aspectLabels = listOf("Fit", "Zoom", "Fill")
     val subSizeOptions = listOf(14f, 18f, 22f, 26f)
     val subColorLabels = listOf("White", "Yellow", "Cyan", "Green")
-    val subMarginOptions = listOf(5, 8, 12, 16)
+    val subMarginOptions = listOf(2, 4, 6, 10)
 
     ModalDrawerSheet(
         drawerContainerColor = DeepPurpleBg,

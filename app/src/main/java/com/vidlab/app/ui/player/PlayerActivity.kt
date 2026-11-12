@@ -329,9 +329,10 @@ private fun ModernPlayerScreen(
                     sub.scaleX = invScale
                     sub.scaleY = invScale
 
-                    val visibleFraction = (view.height.toFloat() / (sub.height.toFloat() * customScale).coerceAtLeast(1f)).coerceIn(0.2f, 1f)
-                    val offscreenBottom = (1f - visibleFraction) / 2f
-                    val desiredBottom = (playerPrefs.subtitleBottomPaddingPct / 100f) * visibleFraction
+                    val screenH = view.height.toFloat().coerceAtLeast(1f)
+                    val scaledSubH = (sub.height.toFloat() * customScale).coerceAtLeast(screenH)
+                    val offscreenBottom = ((scaledSubH - screenH) / (2f * scaledSubH)).coerceAtLeast(0f)
+                    val desiredBottom = (playerPrefs.subtitleBottomPaddingPct / 100f) * (screenH / scaledSubH)
 
                     val fgColor = when (playerPrefs.subtitleColorIndex) {
                         1 -> android.graphics.Color.YELLOW
@@ -345,7 +346,7 @@ private fun ModernPlayerScreen(
                     sub.setApplyEmbeddedFontSizes(false)
                     sub.setStyle(CaptionStyleCompat(fgColor, bgColor, android.graphics.Color.TRANSPARENT, edgeType, android.graphics.Color.BLACK, Typeface.DEFAULT_BOLD))
                     sub.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, playerPrefs.subtitleFontSizeSp)
-                    sub.setBottomPaddingFraction((offscreenBottom + desiredBottom).coerceIn(0.05f, 0.45f))
+                    sub.setBottomPaddingFraction((offscreenBottom + desiredBottom).coerceIn(0.01f, 0.45f))
                 }
             },
             modifier = Modifier.fillMaxSize()

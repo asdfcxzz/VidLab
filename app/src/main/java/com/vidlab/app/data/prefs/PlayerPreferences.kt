@@ -39,6 +39,6 @@ class PlayerPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean("subtitle_bg_box", value).apply()
 
     var subtitleBottomPaddingPct: Int
-        get() = prefs.getInt("subtitle_bottom_padding_pct", 8) // 5%, 8%, 12%, 16%
+        get() = prefs.getInt("subtitle_bottom_padding_pct", 4) // 5%, 8%, 12%, 16%
         set(value) = prefs.edit().putInt("subtitle_bottom_padding_pct", value).apply()
 }
