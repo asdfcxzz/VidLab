@@ -133,6 +133,10 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        val passedPaths = intent.getStringArrayListExtra("PLAYLIST_PATHS") ?: arrayListOf()
+        val passedNames = intent.getStringArrayListExtra("PLAYLIST_NAMES") ?: arrayListOf()
+        val initialPlaylist = passedPaths.zip(passedNames)
+
         setContent {
             exoPlayer?.let { player ->
                 ModernPlayerScreen(
@@ -140,6 +144,7 @@ class PlayerActivity : ComponentActivity() {
                     title = displayTitle,
                     filePath = rawPath,
                     streamUrl = streamUrl,
+                    initialPlaylist = initialPlaylist,
                     onBack = { finish() }
                 )
             }
@@ -188,6 +193,7 @@ private fun ModernPlayerScreen(
     title: String,
     filePath: String = "",
     streamUrl: String = "",
+    initialPlaylist: List<Pair<String, String>> = emptyList(),
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -217,11 +223,11 @@ private fun ModernPlayerScreen(
     var activeFilePath by remember { mutableStateOf(filePath) }
     var activeTitle by remember { mutableStateOf(title) }
     var activeStreamUrl by remember { mutableStateOf(streamUrl) }
-    var siblingEpisodes by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var siblingEpisodes by remember { mutableStateOf(initialPlaylist) }
 
     LaunchedEffect(activeFilePath) {
-        if (activeFilePath.isNotBlank()) {
-            siblingEpisodes = fetchSiblingEpisodes(activeFilePath)
+        if (siblingEpisodes.isEmpty() && activeFilePath.isNotBlank()) {
+            siblingEpisodes = fetchSiblingEpisodes(context, activeFilePath)
         }
     }
 
@@ -235,10 +241,7 @@ private fun ModernPlayerScreen(
         if (activeFilePath.isNotBlank() && duration > 0L) {
             WatchProgressStore(context).saveProgress(activeFilePath, player.currentPosition, duration)
         }
-        val encoded = targetPath.split("/").joinToString("/") { seg ->
-            if (seg.isEmpty()) "" else Uri.encode(seg)
-        }
-        val newUrl = if (targetPath.startsWith("http")) targetPath else "http://127.0.0.1:8080$encoded"
+        val newUrl = com.vidlab.app.data.remote.RcloneEngine.buildStreamUrl(context, targetPath)
         activeFilePath = targetPath
         activeTitle = targetFileName.substringBeforeLast('.')
         activeStreamUrl = newUrl
@@ -852,12 +855,7 @@ private fun ModernPlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))
-                            )
-                        )
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
@@ -953,22 +951,49 @@ private fun ModernPlayerScreen(
                         }
                     }
 
+                    Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = formatDuration(currentPos),
                             color = Color.White,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            style = androidx.compose.ui.text.TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.85f),
+                                    offset = Offset(1f, 1f),
+                                    blurRadius = 4f
+                                )
+                            )
                         )
+                        Text(
+                            text = formatDuration(duration),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            style = androidx.compose.ui.text.TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.85f),
+                                    offset = Offset(1f, 1f),
+                                    blurRadius = 4f
+                                )
+                            )
+                        )
+                    }
 
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(32.dp)
-                                .padding(horizontal = 12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(32.dp)
                                 .pointerInput(duration) {
                                     detectTapGestures { offset ->
                                         if (duration > 0L && size.width > 0) {
@@ -1055,13 +1080,6 @@ private fun ModernPlayerScreen(
                                 )
                             }
                         }
-
-                        Text(
-                            text = formatDuration(duration),
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
                 }
             }
@@ -1230,7 +1248,7 @@ private fun ModernPlayerScreen(
 }
 
 
-private suspend fun fetchSiblingEpisodes(currentFilePath: String): List<Pair<String, String>> =
+private suspend fun fetchSiblingEpisodes(context: Context, currentFilePath: String): List<Pair<String, String>> =
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (currentFilePath.isBlank() || currentFilePath.startsWith("http")) return@withContext emptyList()
         val parentDir = currentFilePath.substringBeforeLast("/", "")
@@ -1239,7 +1257,7 @@ private suspend fun fetchSiblingEpisodes(currentFilePath: String): List<Pair<Str
             val encodedDir = parentDir.split("/").joinToString("/") { seg ->
                 if (seg.isEmpty()) "" else Uri.encode(seg)
             }
-            val url = java.net.URL("http://127.0.0.1:8080$encodedDir/")
+            val url = java.net.URL("${if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(context)) com.vidlab.app.data.remote.RcloneEngine.STREAM_BASE_URL else com.vidlab.app.data.remote.RcloneEngine.getWebDavBaseUrl(context)}$encodedDir/")
             val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                 requestMethod = "PROPFIND"
                 setRequestProperty("Depth", "1")

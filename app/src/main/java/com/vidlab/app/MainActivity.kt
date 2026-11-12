@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
                         MediaDetailScreen(
                             item = selectedItem!!,
                             onBack = { selectedItem = null },
-                            onPlayFile = { file -> launchPlayer(file) },
+                            onPlayFile = { file -> launchPlayer(file, selectedItem) },
                             onRematch = { item ->
                                 itemForOptions = item
                                 viewModel.searchCandidates(item.title)
@@ -199,10 +199,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun launchPlayer(file: MediaFile) {
+    private fun launchPlayer(file: MediaFile, seriesItem: ScrapedMediaItem? = null) {
+        val allEpisodes = seriesItem?.seasons
+            ?.sortedBy { it.seasonNumber }
+            ?.flatMap { season -> season.episodes.sortedBy { it.episodeNumber } }
+            ?: emptyList()
+
+        val paths = ArrayList<String>()
+        val names = ArrayList<String>()
+        if (allEpisodes.isNotEmpty()) {
+            for (ep in allEpisodes) {
+                paths.add(ep.file.path)
+                names.add(ep.file.name)
+            }
+        } else {
+            paths.add(file.path)
+            names.add(file.name)
+        }
+
         val intent = Intent(this, PlayerActivity::class.java).apply {
             putExtra("FILE_PATH", file.path)
             putExtra("FILE_NAME", file.name)
+            putStringArrayListExtra("PLAYLIST_PATHS", paths)
+            putStringArrayListExtra("PLAYLIST_NAMES", names)
         }
         startActivity(intent)
     }
