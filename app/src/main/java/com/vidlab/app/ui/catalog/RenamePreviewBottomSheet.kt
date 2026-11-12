@@ -29,7 +29,7 @@ fun RenamePreviewBottomSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF141120)
+        containerColor = Color(0xFF131A29)
     ) {
         Column(
             modifier = Modifier
@@ -37,14 +37,14 @@ fun RenamePreviewBottomSheet(
                 .padding(horizontal = 20.dp, vertical = 10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF8B5CF6))
+                Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF90CAF9))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Permanent WebDAV Rename", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "${operations.size} file(s) will be restructured and renamed on your storage.",
-                color = Color(0xFF9E95B8),
+                color = Color(0xFF94A3B8),
                 fontSize = 12.sp
             )
 
@@ -69,7 +69,7 @@ fun RenamePreviewBottomSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(vertical = 2.dp)
                         ) {
-                            Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color(0xFF90CAF9), modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(op.newFileName, color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
@@ -83,7 +83,7 @@ fun RenamePreviewBottomSheet(
             Button(
                 onClick = onConfirm,
                 enabled = !isRenaming && operations.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {

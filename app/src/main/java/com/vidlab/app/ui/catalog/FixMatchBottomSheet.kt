@@ -36,7 +36,7 @@ fun FixMatchBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF141120)
+        containerColor = Color(0xFF131A29)
     ) {
         Column(
             modifier = Modifier
@@ -71,7 +71,7 @@ fun FixMatchBottomSheet(
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
                     onClick = { onSearch(query) },
-                    modifier = Modifier.background(Color(0xFF8B5CF6), RoundedCornerShape(8.dp))
+                    modifier = Modifier.background(Color(0xFF90CAF9), RoundedCornerShape(8.dp))
                 ) {
                     Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                 }
@@ -123,7 +123,7 @@ fun FixMatchBottomSheet(
                             )
                             Text(
                                 text = "${result.mediaType.uppercase()} •${result.year ?: "Unknown"}",
-                                color = Color(0xFF9E95B8),
+                                color = Color(0xFF94A3B8),
                                 fontSize = 12.sp
                             )
                         }

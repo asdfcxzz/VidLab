@@ -33,8 +33,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val DeepPurpleBg = Color(0xFF100D1C)
-private val SurfaceDark = Color(0xFF181428)
-private val BorderPurple = Color(0xFF26203B)
+private val SurfaceDark = Color(0xFF131A29)
+private val BorderPurple = Color(0xFF222E46)
 private val AccentViolet = Color(0xFF8B85CF)
 
 @Composable
@@ -107,7 +107,7 @@ fun VidLabDrawerContent(
                 .padding(20.dp)
         ) {
             Text("VidLab", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Media Center & Storage Renamer", color = Color(0xFF9E95B8), fontSize = 12.sp)
+            Text("Media Center & Storage Renamer", color = Color(0xFF94A3B8), fontSize = 12.sp)
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -132,7 +132,7 @@ fun VidLabDrawerContent(
                             }
                             Text(
                                 if (isSignedIn) "Signed in • $simklUser" else "Sign in to sync watch history",
-                                color = Color(0xFF9E95B8),
+                                color = Color(0xFF94A3B8),
                                 fontSize = 11.sp
                             )
                         }
@@ -185,7 +185,7 @@ fun VidLabDrawerContent(
                                     .padding(10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text("Enter PIN on simkl.com/pin:", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                                Text("Enter PIN on simkl.com/pin:", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(session.userCode, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -204,7 +204,7 @@ fun VidLabDrawerContent(
                                         Text("Open Simkl", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                     TextButton(onClick = { pinSession = null }) {
-                                        Text("Cancel", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                                        Text("Cancel", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -218,7 +218,7 @@ fun VidLabDrawerContent(
                         ) {
                             Text(
                                 if (scrobbleActive) "Auto-scrobble at 80% ON" else "Auto-scrobble paused",
-                                color = Color(0xFF9E95B8),
+                                color = Color(0xFF94A3B8),
                                 fontSize = 11.sp
                             )
                             Surface(
@@ -233,7 +233,7 @@ fun VidLabDrawerContent(
                             ) {
                                 Text(
                                     "Sign Out",
-                                    color = Color(0xFFB5ADD1),
+                                    color = Color(0xFFCBD5E1),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -246,7 +246,7 @@ fun VidLabDrawerContent(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Text("LIBRARY & ORGANIZATION", color = Color(0xFF9E95B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("LIBRARY & ORGANIZATION", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
             DrawerActionButton(
@@ -265,7 +265,7 @@ fun VidLabDrawerContent(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Text("PLAYER SETTINGS", color = Color(0xFF9E95B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("PLAYER SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
             Card(
@@ -343,7 +343,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Auto English Audio & Subs", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Prefer EN tracks automatically", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Prefer EN tracks automatically", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = autoEnglish,
@@ -362,7 +362,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Prioritize FFmpeg Decoder", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Force software decoding for EAC3/DTS", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Force software decoding for EAC3/DTS", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = preferFfmpeg,
@@ -381,7 +381,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Volume Swipe Gesture", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Swipe vertically on right side for volume", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Swipe vertically on right side for volume", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = volGesture,
@@ -400,7 +400,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Brightness Swipe Gesture", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Swipe vertically on left side for brightness", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Swipe vertically on left side for brightness", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = brightGesture,
@@ -416,7 +416,7 @@ fun VidLabDrawerContent(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Text("SUBTITLE SETTINGS", color = Color(0xFF9E95B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("SUBTITLE SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
             Card(
@@ -494,7 +494,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Dark Background Box", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Improve readability on bright scenes", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Improve readability on bright scenes", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = subBgBox,
@@ -510,7 +510,7 @@ fun VidLabDrawerContent(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Text("SKIP INTRO & OUTRO", color = Color(0xFF9E95B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("SKIP INTRO & OUTRO", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
             Card(
@@ -526,7 +526,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Show Skip Intro/Outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Fetch segments & show skip button", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Fetch segments & show skip button", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = skipEnabled,
@@ -547,7 +547,7 @@ fun VidLabDrawerContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Auto-Skip Intro & Outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Jump past segments automatically", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                            Text("Jump past segments automatically", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                         Switch(
                             checked = autoSkip,
@@ -600,7 +600,7 @@ fun VidLabDrawerContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Engine v2.4 • rclone WebDAV", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                Text("Engine v2.4 • rclone WebDAV", color = Color(0xFF94A3B8), fontSize = 11.sp)
                 Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF4CAF50)))
             }
         }
@@ -630,7 +630,7 @@ private fun DrawerActionButton(
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(text = title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = subtitle, color = Color(0xFF9E95B8), fontSize = 11.sp)
+                Text(text = subtitle, color = Color(0xFF94A3B8), fontSize = 11.sp)
             }
         }
     }

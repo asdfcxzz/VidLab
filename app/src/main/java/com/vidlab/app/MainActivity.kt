@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             ) {
-                Box(modifier = Modifier.fillMaxSize().background(Color(0xFF09070F))) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E17))) {
                     if (selectedItem != null) {
                         MediaDetailScreen(
                             item = selectedItem!!,
@@ -149,7 +149,7 @@ class MainActivity : ComponentActivity() {
                     if (showRenamerModal) {
                         ModalBottomSheet(
                             onDismissRequest = { if (!progressState.isRunning) showRenamerModal = false },
-                            containerColor = Color(0xFF141120)
+                            containerColor = Color(0xFF131A29)
                         ) {
                             AutoRenameScreen(
                                 state = progressState,

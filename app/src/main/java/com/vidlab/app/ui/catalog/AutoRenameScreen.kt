@@ -22,11 +22,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val BgDark = Color(0xFF141120)
+private val BgDark = Color(0xFF131A29)
 private val SurfaceDark = Color(0xFF1A1629)
 private val BorderPurple = Color(0xFF2E2647)
-private val AccentViolet = Color(0xFF8B5CF6)
-private val TextSecondary = Color(0xFF9E95B8)
+private val AccentViolet = Color(0xFF90CAF9)
+private val TextSecondary = Color(0xFF94A3B8)
 
 @Composable
 fun AutoRenameScreen(

@@ -44,10 +44,10 @@ import com.vidlab.app.data.model.ScrapedMediaItem
 import com.vidlab.app.data.prefs.WatchProgress
 import com.vidlab.app.data.prefs.WatchProgressStore
 
-private val DeepPurpleBg = Color(0xFF09070F)
-private val SurfaceDark = Color(0xFF141120)
-private val BorderPurple = Color(0xFF26203B)
-private val AccentViolet = Color(0xFF8B5CF6)
+private val DeepPurpleBg = Color(0xFF0A0E17)
+private val SurfaceDark = Color(0xFF131A29)
+private val BorderPurple = Color(0xFF222E46)
+private val AccentViolet = Color(0xFF90CAF9)
 
 @Composable
 fun MediaDetailScreen(
@@ -224,7 +224,7 @@ fun MediaDetailScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text(if (item.isSeries) "Reset Series Progress" else "Reset Movie Progress", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
@@ -237,7 +237,7 @@ fun MediaDetailScreen(
                                 )
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Rename & Restructure", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
@@ -245,7 +245,7 @@ fun MediaDetailScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    leadingIcon = { Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Fix Metadata Match", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
@@ -254,7 +254,7 @@ fun MediaDetailScreen(
                                 )
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Storage & File Info", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
@@ -307,7 +307,7 @@ fun MediaDetailScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = metadata!!.genres.joinToString(" • "),
-                                color = Color(0xFFB5ADD1),
+                                color = Color(0xFFCBD5E1),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -406,7 +406,7 @@ fun MediaDetailScreen(
 
                         Text(
                             text = metadata!!.overview!!,
-                            color = Color(0xFFD0C9E6),
+                            color = Color(0xFFE2E8F0),
                             fontSize = 13.sp,
                             lineHeight = 19.sp,
                             maxLines = if (showPlotExpanded) Int.MAX_VALUE else 3,
@@ -466,7 +466,7 @@ fun MediaDetailScreen(
                                 ) {
                                     Text(
                                         text = "Season ${s.seasonNumber} (${s.episodes.size})",
-                                        color = if (isSelected) Color.White else Color(0xFF9E95B8),
+                                        color = if (isSelected) Color.White else Color(0xFF94A3B8),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
@@ -522,9 +522,9 @@ fun MediaDetailScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Title: ${item.title}", color = Color.White, fontSize = 13.sp)
-                        Text("Path: ${item.primaryFile.path}", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                        Text("Path: ${item.primaryFile.path}", color = Color(0xFF94A3B8), fontSize = 12.sp)
                         val sizeMb = String.format("%.2f MB", item.primaryFile.size / 1024.0 / 1024.0)
-                        Text("Primary File Size: $sizeMb", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                        Text("Primary File Size: $sizeMb", color = Color(0xFF94A3B8), fontSize = 12.sp)
                     }
                 },
                 confirmButton = {
@@ -584,7 +584,7 @@ private fun CastItemCard(member: CastMember) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = member.role,
-                color = Color(0xFF9E95B8),
+                color = Color(0xFF94A3B8),
                 fontSize = 10.sp,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -706,7 +706,7 @@ private fun EpisodeCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "S${seasonNumber}E${episodeNumber} • $fileSize",
-                        color = Color(0xFF9E95B8),
+                        color = Color(0xFF94A3B8),
                         fontSize = 11.sp
                     )
                     if (progress?.watched == true) {
@@ -734,7 +734,7 @@ private fun EpisodeCard(
                 Icon(
                     imageVector = Icons.Default.OpenInNew,
                     contentDescription = "Open in External Player",
-                    tint = Color(0xFF9E95B8),
+                    tint = Color(0xFF94A3B8),
                     modifier = Modifier.size(18.dp)
                 )
             }

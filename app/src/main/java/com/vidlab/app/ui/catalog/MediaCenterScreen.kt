@@ -36,11 +36,11 @@ import com.vidlab.app.data.model.MediaFeedSection
 import com.vidlab.app.data.model.ScrapedMediaItem
 import kotlinx.coroutines.delay
 
-private val DeepPurpleBg = Color(0xFF09070F)
-private val SurfaceDark = Color(0xFF141120)
-private val BorderPurple = Color(0xFF26203B)
-private val AccentViolet = Color(0xFF8B5CF6)
-private val SecondaryText = Color(0xFF9E95B8)
+private val DeepPurpleBg = Color(0xFF0A0E17)
+private val SurfaceDark = Color(0xFF131A29)
+private val BorderPurple = Color(0xFF222E46)
+private val AccentViolet = Color(0xFF90CAF9)
+private val SecondaryText = Color(0xFF94A3B8)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -63,7 +63,7 @@ fun HeroCarousel(
         }
     }
 
-    Box(modifier = modifier.fillMaxWidth().height(440.dp)) {
+    Box(modifier = modifier.fillMaxWidth().height(510.dp)) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
@@ -284,113 +284,27 @@ fun MediaCenterScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Transparent)
-                    .statusBarsPadding()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        color = Color(0x5509070F),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.border(0.5.dp, BorderPurple, RoundedCornerShape(12.dp))
-                    ) {
-                        IconButton(onClick = onOpenDrawer, modifier = Modifier.size(42.dp)) {
-                            Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu", tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0x5509070F),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.border(0.5.dp, BorderPurple, RoundedCornerShape(12.dp))
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    isSearchActive = !isSearchActive
-                                    if (!isSearchActive) searchQuery = ""
-                                },
-                                modifier = Modifier.size(42.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
-                                    contentDescription = "Search",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
-                            IconButton(onClick = onRescan, modifier = Modifier.size(42.dp)) {
-                                if (isLoading) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = AccentViolet)
-                                } else {
-                                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Rescan", tint = Color.White, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = isSearchActive,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    TextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search title, series, anime...", color = SecondaryText, fontSize = 13.sp) },
-                        singleLine = true,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = SurfaceDark,
-                            unfocusedContainerColor = SurfaceDark,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            cursorColor = AccentViolet,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(1.dp, BorderPurple, RoundedCornerShape(10.dp))
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(DeepPurpleBg)
+    ) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                top = if (isSearchActive) 136.dp else 0.dp,
+                bottom = 32.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (!isSearchActive && carouselItems.isNotEmpty()) {
+                item {
+                    HeroCarousel(
+                        featuredItems = carouselItems,
+                        onWatchNow = { onSelectItem(it) }
                     )
                 }
             }
-        },
-        containerColor = DeepPurpleBg,
-        modifier = modifier
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            LazyColumn(
-                contentPadding = PaddingValues(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (!isSearchActive && carouselItems.isNotEmpty()) {
-                    item {
-                        HeroCarousel(
-                            featuredItems = carouselItems,
-                            onWatchNow = { onSelectItem(it) }
-                        )
-                    }
-                }
 
                 items(filteredSections) { section ->
                     Column {
@@ -416,6 +330,97 @@ fun MediaCenterScreen(
                         }
                     }
                 }
+            }
+        // Subtle top gradient scrim so floating Hamburger & Search buttons stay crisp over bright posters
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xCC0A0E17), Color.Transparent)
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = Color(0x880A0E17),
+                    shape = CircleShape,
+                    modifier = Modifier.border(0.8.dp, BorderPurple, CircleShape)
+                ) {
+                    IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Menu",
+                            tint = Color.White,
+                            modifier = Modifier.size(27.dp)
+                        )
+                    }
+                }
+
+                Surface(
+                    color = Color(0x880A0E17),
+                    shape = CircleShape,
+                    modifier = Modifier.border(0.8.dp, BorderPurple, CircleShape)
+                ) {
+                    IconButton(
+                        onClick = {
+                            isSearchActive = !isSearchActive
+                            if (!isSearchActive) searchQuery = ""
+                        },
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isSearchActive,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search title, series, anime...", color = SecondaryText, fontSize = 14.sp) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = SurfaceDark,
+                        unfocusedContainerColor = SurfaceDark,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = AccentViolet,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, BorderPurple, RoundedCornerShape(14.dp))
+                )
             }
         }
     }

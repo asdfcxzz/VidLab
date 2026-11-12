@@ -42,7 +42,7 @@ fun RenameOptionsDialog(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF141120)
+        containerColor = Color(0xFF131A29)
     ) {
         Column(
             modifier = Modifier
@@ -61,7 +61,7 @@ fun RenameOptionsDialog(
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color(0xFF1D182E),
-                contentColor = Color(0xFF8B5CF6)
+                contentColor = Color(0xFF90CAF9)
             ) {
                 Tab(
                     selected = selectedTab == 0,
@@ -69,8 +69,8 @@ fun RenameOptionsDialog(
                         selectedTab = 0
                         onSearch(queryText)
                     },
-                    text = { Text("Movie", color = if (selectedTab == 0) Color(0xFF8B5CF6) else Color(0xFF9E95B8)) },
-                    icon = { Icon(Icons.Default.Movie, contentDescription = null, tint = if (selectedTab == 0) Color(0xFF8B5CF6) else Color(0xFF9E95B8)) }
+                    text = { Text("Movie", color = if (selectedTab == 0) Color(0xFF90CAF9) else Color(0xFF94A3B8)) },
+                    icon = { Icon(Icons.Default.Movie, contentDescription = null, tint = if (selectedTab == 0) Color(0xFF90CAF9) else Color(0xFF94A3B8)) }
                 )
                 Tab(
                     selected = selectedTab == 1,
@@ -78,14 +78,14 @@ fun RenameOptionsDialog(
                         selectedTab = 1
                         onSearch(queryText)
                     },
-                    text = { Text("TV Show", color = if (selectedTab == 1) Color(0xFF8B5CF6) else Color(0xFF9E95B8)) },
-                    icon = { Icon(Icons.Default.Tv, contentDescription = null, tint = if (selectedTab == 1) Color(0xFF8B5CF6) else Color(0xFF9E95B8)) }
+                    text = { Text("TV Show", color = if (selectedTab == 1) Color(0xFF90CAF9) else Color(0xFF94A3B8)) },
+                    icon = { Icon(Icons.Default.Tv, contentDescription = null, tint = if (selectedTab == 1) Color(0xFF90CAF9) else Color(0xFF94A3B8)) }
                 )
                 Tab(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    text = { Text("Manual", color = if (selectedTab == 2) Color(0xFF8B5CF6) else Color(0xFF9E95B8)) },
-                    icon = { Icon(Icons.Default.Edit, contentDescription = null, tint = if (selectedTab == 2) Color(0xFF8B5CF6) else Color(0xFF9E95B8)) }
+                    text = { Text("Manual", color = if (selectedTab == 2) Color(0xFF90CAF9) else Color(0xFF94A3B8)) },
+                    icon = { Icon(Icons.Default.Edit, contentDescription = null, tint = if (selectedTab == 2) Color(0xFF90CAF9) else Color(0xFF94A3B8)) }
                 )
             }
 
@@ -113,7 +113,7 @@ fun RenameOptionsDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(
                         onClick = { onSearch(queryText) },
-                        modifier = Modifier.background(Color(0xFF8B5CF6), RoundedCornerShape(8.dp))
+                        modifier = Modifier.background(Color(0xFF90CAF9), RoundedCornerShape(8.dp))
                     ) {
                         Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                     }
@@ -153,7 +153,7 @@ fun RenameOptionsDialog(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(res.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${res.mediaType.uppercase()} • ${res.year ?: "Unknown"}", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                                Text("${res.mediaType.uppercase()} • ${res.year ?: "Unknown"}", color = Color(0xFF94A3B8), fontSize = 11.sp)
                             }
                         }
                     }
@@ -161,7 +161,7 @@ fun RenameOptionsDialog(
             } else {
                 // Manual Renaming Mode
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Text("Exact Title:", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                    Text("Exact Title:", color = Color(0xFF94A3B8), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     TextField(
                         value = manualTitle,
@@ -176,7 +176,7 @@ fun RenameOptionsDialog(
                         )
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text("Release Year (e.g. 2026):", color = Color(0xFF9E95B8), fontSize = 12.sp)
+                    Text("Release Year (e.g. 2026):", color = Color(0xFF94A3B8), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     TextField(
                         value = manualYear,
@@ -193,7 +193,7 @@ fun RenameOptionsDialog(
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = { onManualApply(manualTitle.trim(), manualYear.trim().takeIf { it.isNotBlank() }) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth().height(48.dp)
                     ) {

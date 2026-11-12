@@ -40,7 +40,7 @@ fun AmbiguousMatchDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Multiple matches found. Select the correct title to rename and fetch artwork:",
-                    color = Color(0xFF9E95B8),
+                    color = Color(0xFF94A3B8),
                     fontSize = 12.sp
                 )
                 Spacer(modifier = Modifier.height(10.dp))
@@ -74,7 +74,7 @@ fun AmbiguousMatchDialog(
                                 Text(cand.title, color = Color.White, fontSize = 14.sp)
                                 Text(
                                     text = "${cand.mediaType.uppercase()} •${cand.year ?: ""}",
-                                    color = Color(0xFF9E95B8),
+                                    color = Color(0xFF94A3B8),
                                     fontSize = 11.sp
                                 )
                             }
@@ -89,6 +89,6 @@ fun AmbiguousMatchDialog(
                 Text("Skip", color = Color.Gray)
             }
         },
-        containerColor = Color(0xFF141120)
+        containerColor = Color(0xFF131A29)
     )
 }

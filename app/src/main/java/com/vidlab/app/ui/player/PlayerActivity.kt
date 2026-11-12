@@ -570,7 +570,7 @@ private fun ModernPlayerScreen(
         if (customScale > 1.02f && controlsVisible && !isLocked) {
             Surface(
                 onClick = { customScale = 1f; customOffset = Offset.Zero; gestureOverlayText = "Zoom: 100%" },
-                color = Color(0xFF8B5CF6),
+                color = Color(0xFF90CAF9),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 24.dp)
             ) {
@@ -585,7 +585,7 @@ private fun ModernPlayerScreen(
                     customOffset = Offset.Zero
                     gestureOverlayText = "Zoom: 100%"
                 },
-                color = Color(0xFF8B5CF6),
+                color = Color(0xFF90CAF9),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -603,7 +603,7 @@ private fun ModernPlayerScreen(
 
         if (isBuffering && playerError == null) {
             CircularProgressIndicator(
-                color = Color(0xFF8B5CF6),
+                color = Color(0xFF90CAF9),
                 modifier = Modifier.align(Alignment.Center)
             )
         }
@@ -655,7 +655,7 @@ private fun ModernPlayerScreen(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = "Unlock Screen",
-                    tint = Color(0xFF8B5CF6)
+                    tint = Color(0xFF90CAF9)
                 )
             }
         }
@@ -1063,11 +1063,11 @@ private fun ModernPlayerScreen(
         if (showAudioDialog) {
             AlertDialog(
                 onDismissRequest = { showAudioDialog = false },
-                containerColor = Color(0xFF181428),
+                containerColor = Color(0xFF131A29),
                 title = { Text("Select Audio Track", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
                     if (audioTracks.isEmpty()) {
-                        Text("No selectable audio tracks found in stream.", color = Color(0xFF9E95B8))
+                        Text("No selectable audio tracks found in stream.", color = Color(0xFF94A3B8))
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(audioTracks) { track ->
@@ -1090,7 +1090,7 @@ private fun ModernPlayerScreen(
                                     RadioButton(
                                         selected = track.isSelected,
                                         onClick = null,
-                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B5CF6))
+                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF90CAF9))
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(track.label, color = Color.White, fontSize = 14.sp)
@@ -1101,7 +1101,7 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showAudioDialog = false }) {
-                        Text("Close", color = Color(0xFF8B5CF6))
+                        Text("Close", color = Color(0xFF90CAF9))
                     }
                 }
             )
@@ -1110,7 +1110,7 @@ private fun ModernPlayerScreen(
         if (showSubtitleDialog) {
             AlertDialog(
                 onDismissRequest = { showSubtitleDialog = false },
-                containerColor = Color(0xFF181428),
+                containerColor = Color(0xFF131A29),
                 title = { Text("Select Subtitles", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1142,7 +1142,7 @@ private fun ModernPlayerScreen(
                                 RadioButton(
                                     selected = track.isSelected,
                                     onClick = null,
-                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B5CF6))
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF90CAF9))
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(track.label, color = Color.White, fontSize = 14.sp)
@@ -1152,7 +1152,7 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showSubtitleDialog = false }) {
-                        Text("Close", color = Color(0xFF8B5CF6))
+                        Text("Close", color = Color(0xFF90CAF9))
                     }
                 }
             )
@@ -1162,7 +1162,7 @@ private fun ModernPlayerScreen(
             val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
             AlertDialog(
                 onDismissRequest = { showSpeedDialog = false },
-                containerColor = Color(0xFF181428),
+                containerColor = Color(0xFF131A29),
                 title = { Text("Playback Speed", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1182,7 +1182,7 @@ private fun ModernPlayerScreen(
                                 RadioButton(
                                     selected = playbackSpeed == spd,
                                     onClick = null,
-                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B5CF6))
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF90CAF9))
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("${spd}x", color = Color.White, fontSize = 14.sp)
@@ -1192,7 +1192,7 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showSpeedDialog = false }) {
-                        Text("Close", color = Color(0xFF8B5CF6))
+                        Text("Close", color = Color(0xFF90CAF9))
                     }
                 }
             )
@@ -1203,7 +1203,7 @@ private fun ModernPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(24.dp)
-                    .background(Color(0xDD181428), shape = RoundedCornerShape(12.dp))
+                    .background(Color(0xE6131A29), shape = RoundedCornerShape(12.dp))
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -1213,7 +1213,7 @@ private fun ModernPlayerScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 Button(
                     onClick = onBack,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9))
                 ) {
                     Text("Close", color = Color.White)
                 }

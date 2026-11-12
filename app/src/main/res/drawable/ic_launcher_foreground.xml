@@ -5,20 +5,26 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Subtle outer frosted ring -->
     <path
-        android:strokeColor="#4DFFFFFF"
-        android:strokeWidth="1.5"
-        android:pathData="M54,20 L86,38 L86,74 L54,92 L22,74 L22,38 Z"/>
-    <path android:pathData="M44,36 L74,54 L44,72 Z">
+        android:pathData="M54,28A26,26 0 1,1 53.99,28Z"
+        android:strokeWidth="2.4"
+        android:strokeColor="#3390CAF9"
+        android:fillColor="#14131A29" />
+
+    <!-- Smooth rounded-corner Ice-Blue play triangle -->
+    <path android:pathData="M47.5,41.8C45.8,40.8 43.7,42.0 43.7,44.0L43.7,64.0C43.7,66.0 45.8,67.2 47.5,66.2L65.2,56.2C66.9,55.2 66.9,52.8 65.2,51.8Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="44"
-                android:startY="36"
-                android:endX="74"
-                android:endY="72"
                 android:type="linear"
-                android:startColor="#B388FF"
-                android:endColor="#7C4DFF" />
+                android:startX="43"
+                android:startY="41"
+                android:endX="67"
+                android:endY="67">
+                <item android:offset="0.0" android:color="#A8D5FF" />
+                <item android:offset="1.0" android:color="#5B9BF8" />
+            </gradient>
         </aapt:attr>
     </path>
 </vector>
