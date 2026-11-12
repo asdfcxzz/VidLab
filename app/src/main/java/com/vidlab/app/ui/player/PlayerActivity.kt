@@ -774,20 +774,20 @@ private fun ModernPlayerScreen(
             val hudPillBg = Color(0xCC1B202C)
             val hudCircleBg = Color(0xCC1B202C)
 
-            Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 // TOP BAR
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                        .padding(start = 12.dp, end = 12.dp, top = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
                             .background(hudCircleBg)
                     ) {
@@ -812,40 +812,45 @@ private fun ModernPlayerScreen(
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                         )
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    IconButton(
-                        onClick = { showAudioDialog = true },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(hudCircleBg)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Audiotrack,
-                            contentDescription = "Audio Track",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                        IconButton(
+                            onClick = { showAudioDialog = true },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(hudCircleBg)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Audiotrack,
+                                contentDescription = "Audio Track",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                    IconButton(
-                        onClick = { showSubtitleDialog = true },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(hudCircleBg)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Subtitles,
-                            contentDescription = "Subtitles",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        IconButton(
+                            onClick = { showSubtitleDialog = true },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(hudCircleBg)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = "Subtitles",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
