@@ -41,6 +41,14 @@ class PlayerPreferences(context: Context) {
         get() = prefs.getInt("subtitle_bottom_padding_pct", 4)
         set(value) = prefs.edit().putInt("subtitle_bottom_padding_pct", value).apply()
 
+    var volumeGestureEnabled: Boolean
+        get() = prefs.getBoolean("volume_gesture_enabled", true)
+        set(value) = prefs.edit().putBoolean("volume_gesture_enabled", value).apply()
+
+    var brightnessGestureEnabled: Boolean
+        get() = prefs.getBoolean("brightness_gesture_enabled", false)
+        set(value) = prefs.edit().putBoolean("brightness_gesture_enabled", value).apply()
+
     fun resetToDefaults() {
         prefs.edit().clear().apply()
     }

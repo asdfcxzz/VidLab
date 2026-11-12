@@ -61,6 +61,8 @@ fun VidLabDrawerContent(
     var resizeMode by remember { mutableIntStateOf(playerPrefs.defaultResizeMode) }
     var autoEnglish by remember { mutableStateOf(playerPrefs.autoEnglishTracks) }
     var preferFfmpeg by remember { mutableStateOf(playerPrefs.preferFfmpegAudio) }
+    var volGesture by remember { mutableStateOf(playerPrefs.volumeGestureEnabled) }
+    var brightGesture by remember { mutableStateOf(playerPrefs.brightnessGestureEnabled) }
 
     var subSize by remember { mutableFloatStateOf(playerPrefs.subtitleFontSizeSp) }
     var subColorIdx by remember { mutableIntStateOf(playerPrefs.subtitleColorIndex) }
@@ -79,7 +81,7 @@ fun VidLabDrawerContent(
         val stepMs = (activePin.interval.coerceAtLeast(5)) * 1000L
         repeat(60) {
             delay(stepMs)
-            val verified = simklManager.pollPinStatus(activePin.userCode).getOrDefault(false)
+            val verified = simklManager.pollPinStatus(activePin).getOrDefault(false)
             if (verified) {
                 isSignedIn = true
                 simklUser = simklManager.username ?: "Simkl Member"
@@ -155,7 +157,7 @@ fun VidLabDrawerContent(
                                         isRequestingPin = false
                                         res.onSuccess { pinSession = it }
                                         res.onFailure {
-                                            Toast.makeText(context, "Failed to reach Simkl", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Simkl error: ${it.message ?: "Network error"}", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -362,6 +364,44 @@ fun VidLabDrawerContent(
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
                         )
                     }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Volume Swipe Gesture", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("Swipe vertically on right side for volume", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = volGesture,
+                            onCheckedChange = {
+                                volGesture = it
+                                playerPrefs.volumeGestureEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Brightness Swipe Gesture", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("Swipe vertically on left side for brightness", color = Color(0xFF9E95B8), fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = brightGesture,
+                            onCheckedChange = {
+                                brightGesture = it
+                                playerPrefs.brightnessGestureEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                        )
+                    }
                 }
             }
 
@@ -469,6 +509,8 @@ fun VidLabDrawerContent(
                     resizeMode = playerPrefs.defaultResizeMode
                     autoEnglish = playerPrefs.autoEnglishTracks
                     preferFfmpeg = playerPrefs.preferFfmpegAudio
+                    volGesture = playerPrefs.volumeGestureEnabled
+                    brightGesture = playerPrefs.brightnessGestureEnabled
                     subSize = playerPrefs.subtitleFontSizeSp
                     subColorIdx = playerPrefs.subtitleColorIndex
                     subBgBox = playerPrefs.subtitleBgBox

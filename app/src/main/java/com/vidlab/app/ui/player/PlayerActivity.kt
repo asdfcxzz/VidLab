@@ -423,6 +423,7 @@ private fun ModernPlayerScreen(
                                 change.consume()
                                 val deltaFraction = -dragAmount / (size.height.toFloat().coerceAtLeast(1f))
                                 if (isLeftSide) {
+                                    if (playerPrefs.brightnessGestureEnabled) {
                                     brightnessLevel = (brightnessLevel + deltaFraction * 1.4f).coerceIn(0.01f, 1.0f)
                                     activity?.window?.let { win ->
                                         val lp = win.attributes
@@ -430,7 +431,8 @@ private fun ModernPlayerScreen(
                                         win.attributes = lp
                                     }
                                     gestureOverlayText = "Brightness: ${(brightnessLevel * 100).toInt()}%"
-                                } else {
+                                    }
+                                } else if (playerPrefs.volumeGestureEnabled) {
                                     val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
                                     volumeAccum += deltaFraction * maxVol * 1.5f
                                     val steps = volumeAccum.toInt()
