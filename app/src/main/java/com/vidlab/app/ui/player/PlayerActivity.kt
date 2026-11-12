@@ -16,7 +16,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import com.vidlab.app.data.prefs.PlayerPreferences
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -77,14 +81,22 @@ class PlayerActivity : ComponentActivity() {
         }
         val streamUrl = if (rawPath.startsWith("http")) rawPath else "http://127.0.0.1:8080$encodedPath"
 
-        val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val playerPrefs = PlayerPreferences(this)
+        val extMode = if (playerPrefs.preferFfmpegAudio) {
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+        } else {
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+        }
+        val renderersFactory = DefaultRenderersFactory(this).setExtensionRendererMode(extMode)
         exoPlayer = ExoPlayer.Builder(this, renderersFactory).build().apply {
-            trackSelectionParameters = trackSelectionParameters
-                .buildUpon()
-                .setPreferredAudioLanguages("en", "eng")
-                .setPreferredTextLanguages("en", "eng")
-                .build()
+            if (playerPrefs.autoEnglishTracks) {
+                trackSelectionParameters = trackSelectionParameters
+                    .buildUpon()
+                    .setPreferredAudioLanguages("en", "eng")
+                    .setPreferredTextLanguages("en", "eng")
+                    .build()
+            }
+            setPlaybackSpeed(playerPrefs.defaultSpeed)
             setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)))
             prepare()
             playWhenReady = true
@@ -139,13 +151,17 @@ private fun ModernPlayerScreen(
 
     var controlsVisible by remember { mutableStateOf(true) }
     var isLocked by remember { mutableStateOf(false) }
-    var resizeModeIndex by remember { mutableIntStateOf(0) }
+    val playerPrefs = remember { PlayerPreferences(context) }
+    val seekStepMs = remember { playerPrefs.seekStepSeconds * 1000L }
+    var resizeModeIndex by remember { mutableIntStateOf(playerPrefs.defaultResizeMode.coerceIn(0, 2)) }
     val resizeModes = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit",
         AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Zoom",
         AspectRatioFrameLayout.RESIZE_MODE_FILL to "Fill"
     )
-    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var playbackSpeed by remember { mutableFloatStateOf(playerPrefs.defaultSpeed) }
+    var customScale by remember { mutableFloatStateOf(1f) }
+    var customOffset by remember { mutableStateOf(Offset.Zero) }
 
     var showAudioDialog by remember { mutableStateOf(false) }
     var showSubtitleDialog by remember { mutableStateOf(false) }
@@ -285,7 +301,14 @@ private fun ModernPlayerScreen(
             update = { view ->
                 view.resizeMode = resizeModes[resizeModeIndex].first
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = customScale,
+                    scaleY = customScale,
+                    translationX = customOffset.x,
+                    translationY = customOffset.y
+                )
         )
 
         Box(
@@ -299,12 +322,12 @@ private fun ModernPlayerScreen(
                         onDoubleTap = { offset ->
                             if (!isLocked) {
                                 val isLeft = offset.x < size.width / 2f
-                                val delta = if (isLeft) -10_000L else 10_000L
+                                val delta = if (isLeft) -seekStepMs else seekStepMs
                                 val maxDur = if (duration > 0) duration else Long.MAX_VALUE
                                 val target = (player.currentPosition + delta).coerceIn(0L, maxDur)
                                 player.seekTo(target)
                                 currentPos = target
-                                seekFeedbackText = if (isLeft) "« 10s" else "10s »"
+                                seekFeedbackText = if (isLeft) "« ${playerPrefs.seekStepSeconds}s" else "${playerPrefs.seekStepSeconds}s »"
                             }
                         }
                     )
@@ -345,7 +368,74 @@ private fun ModernPlayerScreen(
                         )
                     }
                 }
+                .pointerInput(isLocked) {
+                    if (!isLocked) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            if (zoom != 1f || customScale > 1.01f) {
+                                val nextScale = (customScale * zoom).coerceIn(1f, 3.0f)
+                                customScale = nextScale
+                                customOffset = if (nextScale <= 1.01f) {
+                                    Offset.Zero
+                                } else {
+                                    Offset(
+                                        x = (customOffset.x + pan.x).coerceIn(-size.width * 0.6f, size.width * 0.6f),
+                                        y = (customOffset.y + pan.y).coerceIn(-size.height * 0.6f, size.height * 0.6f)
+                                    )
+                                }
+                                gestureOverlayText = "Zoom: ${(customScale * 100).toInt()}%"
+                            }
+                        }
+                    }
+                }
+                .pointerInput(isLocked) {
+                    if (!isLocked) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            if (zoom != 1f || customScale > 1.01f) {
+                                val next = (customScale * zoom).coerceIn(1f, 3.0f)
+                                customScale = next
+                                customOffset = if (next <= 1.01f) Offset.Zero else Offset(
+                                    (customOffset.x + pan.x).coerceIn(-size.width * 0.6f, size.width * 0.6f),
+                                    (customOffset.y + pan.y).coerceIn(-size.height * 0.6f, size.height * 0.6f)
+                                )
+                                gestureOverlayText = "Zoom: ${(customScale * 100).toInt()}%"
+                            }
+                        }
+                    }
+                }
         )
+        if (customScale > 1.02f && controlsVisible && !isLocked) {
+            Surface(
+                onClick = { customScale = 1f; customOffset = Offset.Zero; gestureOverlayText = "Zoom: 100%" },
+                color = Color(0xFF8B5CF6),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 24.dp)
+            ) {
+                Text("Reset Zoom (${(customScale * 100).toInt()}%)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
+            }
+        }
+
+        if (customScale > 1.02f && controlsVisible && !isLocked) {
+            Surface(
+                onClick = {
+                    customScale = 1f
+                    customOffset = Offset.Zero
+                    gestureOverlayText = "Zoom: 100%"
+                },
+                color = Color(0xFF8B5CF6),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 64.dp, end = 24.dp)
+            ) {
+                Text(
+                    text = "Reset Zoom (${(customScale * 100).toInt()}%)",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
 
         if (isBuffering && playerError == null) {
             CircularProgressIndicator(
@@ -410,7 +500,7 @@ private fun ModernPlayerScreen(
             visible = controlsVisible && !isLocked,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = customScale, scaleY = customScale, translationX = customOffset.x, translationY = customOffset.y)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Row(
