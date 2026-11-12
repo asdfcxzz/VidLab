@@ -123,14 +123,9 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
 
     fun executeSingleItemRename(onSuccess: () -> Unit) {
         val ops = _singleRenamePlan.value ?: return
-        val app = getApplication<Application>()
-        if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(app)) {
-            _singleRenamePlan.value = null
-            Toast.makeText(app, "Renamer is only available for WebDAV sources", Toast.LENGTH_LONG).show()
-            return
-        }
         viewModelScope.launch(Dispatchers.IO) {
             _isSingleRenaming.value = true
+            val app = getApplication<Application>()
             var failed = 0
             for (op in ops) {
                 if (op.oldPath != op.newPath) {
@@ -155,24 +150,15 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
 
     fun triggerLibraryBatchRename() {
         val app = getApplication<Application>()
-        if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(app)) {
-            _progressState.update {
-                it.copy(
-                    isRunning = false,
-                    isCompleted = true,
-                    currentStep = "WebDAV source required",
-                    logs = listOf("✗ Auto-Renamer only works with WebDAV sources. Switch from Rclone to WebDAV in Manage Sources."),
-                    error = "Only WebDAV sources can use the renamer."
-                )
-            }
-            return
-        }
         viewModelScope.launch(Dispatchers.IO) {
+            if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(app)) {
+                com.vidlab.app.data.remote.RcloneEngine.ensureServerRunning(app)
+            }
             _progressState.update {
                 it.copy(
                     isRunning = true,
-                    currentStep = "Scanning WebDAV storage for unstructured media...",
-                    logs = listOf("Starting WebDAV crawl (${com.vidlab.app.data.remote.RcloneEngine.getWebDavBaseUrl(app)})..."),
+                    currentStep = "Scanning storage for unstructured media...",
+                    logs = listOf("Starting storage crawl..."),
                     isCompleted = false,
                     error = null
                 )

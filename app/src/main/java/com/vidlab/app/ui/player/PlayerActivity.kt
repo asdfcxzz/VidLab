@@ -640,17 +640,7 @@ private fun ModernPlayerScreen(
                         }
                     }
                 }
-                .pointerInput(isLocked) {
-                    if (!isLocked) {
-                        detectTransformGestures { _, _, zoom, _ ->
-                            if (zoom != 1f) {
-                                customScale = (customScale * zoom).coerceIn(1f, 3.0f)
-                                customOffset = Offset.Zero
-                                gestureOverlayText = "Zoom: ${(customScale * 100).toInt()}%"
-                            }
-                        }
-                    }
-                }
+
         )
         if (customScale > 1.02f && controlsVisible && !isLocked) {
             Surface(
