@@ -6,6 +6,9 @@ import android.os.Build
 import com.vidlab.app.data.model.MediaFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -201,60 +204,58 @@ object RcloneEngine {
             require(enabledRemotes.isNotEmpty()) { "Select at least one rclone remote in the menu" }
 
             val videoExtensions = setOf("mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "flv")
-            val results = mutableListOf<MediaFile>()
             val multiRemote = enabledRemotes.size > 1
 
-            for (remote in enabledRemotes) {
-                val sub = remote.rootSubpath.trim('/')
-                val target = if (sub.isEmpty()) "${remote.name}:" else "${remote.name}:$sub"
+            coroutineScope {
+                enabledRemotes.map { remote ->
+                    async(Dispatchers.IO) {
+                        val sub = remote.rootSubpath.trim('/')
+                        val target = if (sub.isEmpty()) "${remote.name}:" else "${remote.name}:$sub"
 
-                val cmd = listOf(
-                    bin.absolutePath,
-                    "lsjson",
-                    "--config", baseConf.absolutePath,
-                    "--recursive",
-                    "--files-only",
-                    "--no-modtime",
-                    "--no-mimetype",
-                    target
-                )
-                val pb = ProcessBuilder(cmd).redirectErrorStream(false)
-                pb.environment()["SSL_CERT_DIR"] = "/system/etc/security/cacerts"
-                pb.environment()["HOME"] = context.filesDir.absolutePath
-                val proc = pb.start()
-
-                val stdout = proc.inputStream.bufferedReader().use { it.readText() }
-                val stderr = proc.errorStream.bufferedReader().use { it.readText() }
-                val exitCode = proc.waitFor()
-
-                if (exitCode != 0 && stdout.isBlank()) {
-                    throw Exception("rclone (${remote.name}): ${stderr.lines().lastOrNull { it.isNotBlank() } ?: "exit $exitCode"}")
-                }
-
-                val entries = runCatching { json.decodeFromString<List<RcloneLsJsonEntry>>(stdout) }.getOrDefault(emptyList())
-                for (entry in entries) {
-                    if (entry.IsDir) continue
-                    val ext = entry.Name.substringAfterLast('.', "").lowercase()
-                    if (ext !in videoExtensions) continue
-
-                    val relPath = entry.Path.trim('/')
-                    val logicalPath = if (multiRemote) {
-                        "/${remote.name}/$relPath"
-                    } else {
-                        "/$relPath"
-                    }
-                    results.add(
-                        MediaFile(
-                            name = entry.Name,
-                            path = logicalPath,
-                            isDirectory = false,
-                            size = entry.Size,
-                            isVideo = true
+                        val cmd = listOf(
+                            bin.absolutePath,
+                            "lsjson",
+                            "--config", baseConf.absolutePath,
+                            "--recursive",
+                            "--files-only",
+                            "--fast-list",
+                            "--checkers", "16",
+                            "--no-modtime",
+                            "--no-mimetype",
+                            target
                         )
-                    )
-                }
+                        val pb = ProcessBuilder(cmd).redirectErrorStream(false)
+                        pb.environment()["SSL_CERT_DIR"] = "/system/etc/security/cacerts"
+                        pb.environment()["HOME"] = context.filesDir.absolutePath
+                        val proc = pb.start()
+
+                        val stdout = proc.inputStream.bufferedReader().use { it.readText() }
+                        val stderr = proc.errorStream.bufferedReader().use { it.readText() }
+                        val exitCode = proc.waitFor()
+
+                        if (exitCode != 0 && stdout.isBlank()) {
+                            throw Exception("rclone (${remote.name}): ${stderr.lines().lastOrNull { it.isNotBlank() } ?: "exit $exitCode"}")
+                        }
+
+                        val entries = runCatching { json.decodeFromString<List<RcloneLsJsonEntry>>(stdout) }.getOrDefault(emptyList())
+                        entries.mapNotNull { entry ->
+                            if (entry.IsDir) return@mapNotNull null
+                            val ext = entry.Name.substringAfterLast('.', "").lowercase()
+                            if (ext !in videoExtensions) return@mapNotNull null
+
+                            val relPath = entry.Path.trim('/')
+                            val logicalPath = if (multiRemote) "/${remote.name}/$relPath" else "/$relPath"
+                            MediaFile(
+                                name = entry.Name,
+                                path = logicalPath,
+                                isDirectory = false,
+                                size = entry.Size,
+                                isVideo = true
+                            )
+                        }
+                    }
+                }.awaitAll().flatten()
             }
-            results
         }
     }
 

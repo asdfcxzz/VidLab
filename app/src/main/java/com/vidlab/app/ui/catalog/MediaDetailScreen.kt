@@ -430,7 +430,7 @@ fun MediaDetailScreen(
                             contentPadding = PaddingValues(horizontal = 20.dp),
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            items(metadata!!.cast) { member ->
+                            items(metadata!!.cast, key = { it.name + (it.role ?: "") }, contentType = { "cast" }) { member ->
                                 CastItemCard(member)
                             }
                         }
@@ -453,7 +453,7 @@ fun MediaDetailScreen(
                             contentPadding = PaddingValues(horizontal = 20.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(seasons.size) { idx ->
+                            items(seasons.size, key = { seasons[it].seasonNumber }, contentType = { "season_chip" }) { idx ->
                                 val s = seasons[idx]
                                 val isSelected = idx == selectedSeasonIndex
                                 Surface(
@@ -479,7 +479,7 @@ fun MediaDetailScreen(
             }
 
             if (currentSeason != null) {
-                items(currentSeason.episodes) { ep ->
+                items(currentSeason.episodes, key = { it.file.path }, contentType = { "episode" }) { ep ->
                     val sizeStr = if (ep.file.size > 0) {
                         String.format("%.2f GB", ep.file.size / 1024.0 / 1024.0 / 1024.0)
                     } else "WebDAV Stream"

@@ -306,7 +306,7 @@ fun MediaCenterScreen(
                 }
             }
 
-                items(filteredSections) { section ->
+                items(filteredSections, key = { it.title }, contentType = { "section" }) { section ->
                     Column {
                         Text(
                             text = section.title,
@@ -320,7 +320,7 @@ fun MediaCenterScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            items(section.items) { item ->
+                            items(section.items, key = { it.id }, contentType = { "poster" }) { item ->
                                 MediaCenterCard(
                                     item = item,
                                     onClick = { onSelectItem(item) },

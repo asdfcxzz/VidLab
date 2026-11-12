@@ -27,6 +27,23 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        coil.Coil.setImageLoader(
+            coil.ImageLoader.Builder(applicationContext)
+                .memoryCache {
+                    coil.memory.MemoryCache.Builder(applicationContext)
+                        .maxSizePercent(0.25)
+                        .build()
+                }
+                .diskCache {
+                    coil.disk.DiskCache.Builder()
+                        .directory(java.io.File(cacheDir, "vidlab_image_cache"))
+                        .maxSizeBytes(150L * 1024 * 1024)
+                        .build()
+                }
+                .crossfade(150)
+                .respectCacheHeaders(false)
+                .build()
+        )
         com.vidlab.app.data.remote.RcloneEngine.startForegroundServeService(this)
 
         setContent {
