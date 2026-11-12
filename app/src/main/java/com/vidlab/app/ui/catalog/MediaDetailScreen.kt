@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,11 +14,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -191,53 +196,71 @@ fun MediaDetailScreen(
                                 )
                             }
 
+                            val targetLabel = if (item.isSeries && nextEpisode != null) {
+                                "S%02dE%02d".format(nextEpisode.seasonNumber, nextEpisode.episodeNumber)
+                            } else if (item.isSeries) "Episode" else "Movie"
+
+                            MaterialTheme(
+                                shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp))
+                            ) {
                             DropdownMenu(
                                 expanded = menuExpanded,
                                 onDismissRequest = { menuExpanded = false },
-                                modifier = Modifier.background(SurfaceDark)
+                                modifier = Modifier
+                                    .background(SurfaceDark)
+                                    .border(1.dp, BorderPurple, RoundedCornerShape(16.dp))
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Mark Primary as Watched", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Mark $targetLabel as Watched", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         progressStore.markWatched(primaryTargetFile.path, true)
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Reset Watch Progress", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Reset $targetLabel Progress", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         progressStore.markWatched(primaryTargetFile.path, false)
                                     }
                                 )
+                                HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
-                                    text = { Text("Rename & Restructure Files", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Rename & Restructure", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         onRenameClick()
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Fix Metadata Match", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Fix Metadata Match", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         onFixMatchClick()
                                     }
                                 )
+                                HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
-                                    text = { Text("Open in External Player (MPV)", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Open in External Player", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         launchExternal(primaryTargetFile)
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Storage & File Info", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF9E95B8), modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Storage & File Info", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         showFileDetailsDialog = true
                                     }
                                 )
+                            }
                             }
                         }
                     }

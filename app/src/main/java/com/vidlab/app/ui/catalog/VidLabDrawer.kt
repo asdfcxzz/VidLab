@@ -208,6 +208,7 @@ fun VidLabDrawerContent(
                             }
                         }
                     } else {
+                        HorizontalDivider(color = BorderPurple, thickness = 1.dp)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -218,18 +219,24 @@ fun VidLabDrawerContent(
                                 color = Color(0xFF9E95B8),
                                 fontSize = 11.sp
                             )
-                            Text(
-                                "Sign Out",
-                                color = Color(0xFFFF7B7B),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
+                            Surface(
+                                color = BorderPurple.copy(alpha = 0.75f),
+                                shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.clickable {
                                     simklManager.signOut()
                                     isSignedIn = false
                                     pinSession = null
                                     onSimklToggle(false)
                                 }
-                            )
+                            ) {
+                                Text(
+                                    "Sign Out",
+                                    color = Color(0xFFB5ADD1),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
