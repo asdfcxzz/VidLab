@@ -295,7 +295,7 @@ fun VidLabDrawerContent(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Surface(
-                            color = if (useRclone) AccentViolet else Color.Transparent,
+                            color = if (useRclone) AccentViolet else BorderPurple,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
@@ -316,7 +316,7 @@ fun VidLabDrawerContent(
                         }
 
                         Surface(
-                            color = if (!useRclone) AccentViolet else Color.Transparent,
+                            color = if (!useRclone) AccentViolet else BorderPurple,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)

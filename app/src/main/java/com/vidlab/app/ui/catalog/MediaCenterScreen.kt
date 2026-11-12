@@ -133,7 +133,7 @@ fun HeroCarousel(
 
                     Button(
                         onClick = { onWatchNow(item) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8DEF8)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF)),
                         shape = CircleShape,
                         modifier = Modifier.width(150.dp).height(42.dp)
                     ) {
