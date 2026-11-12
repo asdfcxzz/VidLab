@@ -5,6 +5,11 @@ plugins {
 }
 
 android {
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     namespace = "com.vidlab.app"
     compileSdk = 34
 
