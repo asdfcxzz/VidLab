@@ -76,10 +76,8 @@ fun MediaDetailScreen(
         if (onOpenExternalPlayer != null) {
             onOpenExternalPlayer(file)
         } else {
-            val encodedPath = file.path.split("/").joinToString("/") { segment ->
-                if (segment.isEmpty()) "" else Uri.encode(segment)
-            }
-            val streamUri = if (file.path.startsWith("http")) Uri.parse(file.path) else Uri.parse("http://127.0.0.1:8080$encodedPath")
+            com.vidlab.app.data.remote.RcloneEngine.startForegroundServeService(context)
+            val streamUri = Uri.parse(com.vidlab.app.data.remote.RcloneEngine.buildStreamUrl(context, file.path))
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(streamUri, "video/*")
                 putExtra(Intent.EXTRA_TITLE, file.name)

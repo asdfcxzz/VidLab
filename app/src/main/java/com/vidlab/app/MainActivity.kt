@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.vidlab.app.data.remote.RcloneEngine.startForegroundServeService(this)
 
         setContent {
             val sections by viewModel.feedSections.collectAsState()

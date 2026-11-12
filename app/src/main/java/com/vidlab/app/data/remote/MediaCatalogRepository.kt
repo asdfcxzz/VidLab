@@ -23,7 +23,7 @@ data class StoredBinding(
 
 class MediaCatalogRepository(
     private val context: Context,
-    val webDavClient: WebDavClient = WebDavClient(),
+    val webDavClient: WebDavClient = WebDavClient(if (RcloneEngine.isRcloneModeEnabled(context)) RcloneEngine.STREAM_BASE_URL else "http://127.0.0.1:8080"),
     val scraper: MetadataScraper = MetadataScraper(),
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 ) {
@@ -107,31 +107,37 @@ class MediaCatalogRepository(
         onProgress: ((List<MediaFeedSection>) -> Unit)? = null
     ): Result<List<MediaFeedSection>> = withContext(Dispatchers.IO) {
         runCatching {
-            val allVideoFiles = mutableListOf<MediaFile>()
-            val queue = ArrayDeque<String>()
-            queue.add("/")
+            val allVideoFiles = if (RcloneEngine.isRcloneModeEnabled(context) && RcloneEngine.hasValidConfig(context)) {
+                RcloneEngine.startForegroundServeService(context)
+                RcloneEngine.scanEnabledRemotes(context).getOrThrow().toMutableList()
+            } else {
+                val collected = mutableListOf<MediaFile>()
+                val queue = ArrayDeque<String>()
+                queue.add("/")
 
-            val videoExtensions = setOf("mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "flv")
-            val visited = mutableSetOf<String>()
+                val videoExtensions = setOf("mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "flv")
+                val visited = mutableSetOf<String>()
 
-            while (queue.isNotEmpty()) {
-                val currentPath = queue.removeFirst()
-                val norm = "/" + currentPath.trim('/')
-                if (norm in visited) continue
-                visited.add(norm)
+                while (queue.isNotEmpty()) {
+                    val currentPath = queue.removeFirst()
+                    val norm = "/" + currentPath.trim('/')
+                    if (norm in visited) continue
+                    visited.add(norm)
 
-                val entries = webDavClient.listDirectory(norm).getOrDefault(emptyList())
-                for (entry in entries) {
-                    val entryNorm = "/" + entry.path.trim('/')
-                    if (entry.isDirectory) {
-                        if (entryNorm !in visited) queue.add(entryNorm)
-                    } else {
-                        val ext = entry.name.substringAfterLast('.', "").lowercase()
-                        if (ext in videoExtensions) {
-                            allVideoFiles.add(entry.copy(path = entryNorm))
+                    val entries = webDavClient.listDirectory(norm).getOrDefault(emptyList())
+                    for (entry in entries) {
+                        val entryNorm = "/" + entry.path.trim('/')
+                        if (entry.isDirectory) {
+                            if (entryNorm !in visited) queue.add(entryNorm)
+                        } else {
+                            val ext = entry.name.substringAfterLast('.', "").lowercase()
+                            if (ext in videoExtensions) {
+                                collected.add(entry.copy(path = entryNorm))
+                            }
                         }
                     }
                 }
+                collected
             }
 
             val scrapedItems = groupAndScrapeMedia(allVideoFiles) { partialItems ->
