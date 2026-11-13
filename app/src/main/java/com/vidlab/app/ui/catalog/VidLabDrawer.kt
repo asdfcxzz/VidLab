@@ -470,7 +470,71 @@ fun VidLabDrawerContent(
                                 Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { DownloadTaskManager.clearFinished() })
                             }
                         }
-                        Text("Max 3 concurrent downloads • Saved to Downloads/VidLab", color = Color(0xFF64748B), fontSize = 10.sp)
+                                                Text("Saved videos auto-play offline without internet", color = Color(0xFF64748B), fontSize = 10.sp)
+                        var saveInApp by remember { mutableStateOf(DownloadTaskManager.isSaveInAppEnabled(context)) }
+                        var offlineOnly by remember { mutableStateOf(DownloadTaskManager.isOfflineOnlyMode(context)) }
+                        var offlineFiles by remember { mutableStateOf(DownloadTaskManager.listAllDownloadedFiles(context)) }
+                        LaunchedEffect(downloadTasks.size, activeDownloadCount) {
+                            offlineFiles = DownloadTaskManager.listAllDownloadedFiles(context)
+                        }
+                        Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Save Inside App Storage", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(if (saveInApp) "Private app storage (filesDir/offline_downloads)" else "Public Downloads/VidLab folder", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                    }
+                                    Switch(
+                                        checked = saveInApp,
+                                        onCheckedChange = {
+                                            saveInApp = it
+                                            DownloadTaskManager.setSaveInAppEnabled(context, it)
+                                        },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                                    )
+                                }
+                                HorizontalDivider(color = BorderPurple, thickness = 0.8.dp)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Offline Mode (Local Only)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Block remote streaming; play saved files only", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                    }
+                                    Switch(
+                                        checked = offlineOnly,
+                                        onCheckedChange = {
+                                            offlineOnly = it
+                                            DownloadTaskManager.setOfflineOnlyMode(context, it)
+                                        },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
+                                    )
+                                }
+                                if (offlineFiles.isNotEmpty()) {
+                                    HorizontalDivider(color = BorderPurple, thickness = 0.8.dp)
+                                    val totalMb = offlineFiles.sumOf { it.length() } / (1024.0 * 1024.0)
+                                    Text("SAVED OFFLINE (${offlineFiles.size} • ${String.format("%.1f MB", totalMb)})", color = AccentViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    for (offFile in offlineFiles) {
+                                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Column(modifier = Modifier.weight(1f).clickable {
+                                                val intent = Intent(context, com.vidlab.app.ui.player.PlayerActivity::class.java).apply {
+                                                    putExtra("FILE_PATH", Uri.fromFile(offFile).toString())
+                                                    putExtra("FILE_NAME", offFile.name)
+                                                }
+                                                context.startActivity(intent)
+                                            }) {
+                                                Text(offFile.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text("${offFile.parentFile?.name ?: "Offline"} • ${String.format("%.1f MB", offFile.length() / (1024.0 * 1024.0))}", color = Color(0xFF94A3B8), fontSize = 9.sp)
+                                            }
+                                            IconButton(onClick = {
+                                                offFile.delete()
+                                                offlineFiles = DownloadTaskManager.listAllDownloadedFiles(context)
+                                            }, modifier = Modifier.size(24.dp)) {
+                                                Icon(Icons.Default.Close, contentDescription = "Delete offline file", tint = Color(0xFFEF5350), modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (downloadTasks.isEmpty()) {
                             Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                                 Text("No active downloads. Long-press an episode or use the 3-dot menu to download.", color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.padding(14.dp))

@@ -46,6 +46,54 @@ object DownloadTaskManager {
     val tasks = mutableStateListOf<DownloadTaskItem>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private const val MAX_CONCURRENT_DOWNLOADS = 3
+
+    private const val PREFS_OFFLINE = "vidlab_offline_prefs"
+    private const val KEY_SAVE_IN_APP = "save_downloads_in_app"
+    private const val KEY_OFFLINE_ONLY = "offline_only_mode"
+
+    fun isSaveInAppEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).getBoolean(KEY_SAVE_IN_APP, true)
+
+    fun setSaveInAppEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).edit().putBoolean(KEY_SAVE_IN_APP, enabled).apply()
+    }
+
+    fun isOfflineOnlyMode(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).getBoolean(KEY_OFFLINE_ONLY, false)
+
+    fun setOfflineOnlyMode(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).edit().putBoolean(KEY_OFFLINE_ONLY, enabled).apply()
+    }
+
+    fun getAppOfflineRoot(context: Context): File =
+        File(context.filesDir, "offline_downloads").apply { if (!exists()) mkdirs() }
+
+    fun getPublicOfflineRoot(): File =
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "VidLab")
+
+    fun findDownloadedFile(context: Context, logicalPath: String): File? {
+        val fileName = logicalPath.substringAfterLast('/').trim()
+        if (fileName.isEmpty()) return null
+        val roots = listOf(getAppOfflineRoot(context), getPublicOfflineRoot())
+        for (root in roots) {
+            if (!root.exists()) continue
+            root.walkTopDown().firstOrNull { it.isFile && it.name == fileName && !it.name.endsWith(".part") && it.length() > 0L }?.let {
+                return it
+            }
+        }
+        return null
+    }
+
+    fun listAllDownloadedFiles(context: Context): List<File> {
+        val out = mutableListOf<File>()
+        for (root in listOf(getAppOfflineRoot(context), getPublicOfflineRoot())) {
+            if (root.exists()) {
+                out.addAll(root.walkTopDown().filter { it.isFile && !it.name.endsWith(".part") && it.length() > 0L })
+            }
+        }
+        return out.sortedByDescending { it.lastModified() }
+    }
+
     private val activeJobs = ConcurrentHashMap<String, Job>()
     private val downloadSemaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
@@ -165,8 +213,8 @@ object DownloadTaskManager {
                 RcloneEngine.startForegroundServeService(context)
             }
             val streamUrl = RcloneEngine.buildStreamUrl(context, seed.remotePath)
-            val downloadsRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val targetDir = File(File(downloadsRoot, "VidLab"), seed.folderName).apply { if (!exists()) mkdirs() }
+            val baseRoot = if (isSaveInAppEnabled(context)) getAppOfflineRoot(context) else getPublicOfflineRoot()
+            val targetDir = File(baseRoot, seed.folderName).apply { if (!exists()) mkdirs() }
             val outFile = File(targetDir, seed.fileName)
             val partFile = File(targetDir, "${seed.fileName}.part")
 

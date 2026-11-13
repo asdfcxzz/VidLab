@@ -116,7 +116,7 @@ object RcloneEngine {
         if (currentSection != null) {
             remotes.add(currentSection to currentType)
         }
-        return remotes
+        return remotes.filter { !it.first.startsWith("_") }
     }
 
     fun importConfigText(context: Context, confText: String): Result<List<RcloneRemoteConfig>> {
@@ -400,8 +400,14 @@ object RcloneEngine {
     }
 
     fun buildStreamUrl(context: Context, logicalPath: String): String {
-        if (logicalPath.startsWith("http://") || logicalPath.startsWith("https://")) {
+        if (logicalPath.startsWith("http://") || logicalPath.startsWith("https://") || logicalPath.startsWith("file://")) {
             return logicalPath
+        }
+        DownloadTaskManager.findDownloadedFile(context, logicalPath)?.let { localFile ->
+            return android.net.Uri.fromFile(localFile).toString()
+        }
+        if (DownloadTaskManager.isOfflineOnlyMode(context)) {
+            return "file:///offline_not_downloaded"
         }
         val base = if (isRcloneModeEnabled(context) && hasValidConfig(context)) {
             STREAM_BASE_URL
