@@ -317,24 +317,185 @@ fun MediaCenterScreen(
                         fontSize = 12.sp
                     )
                 } else {
-                    Text(
-                        if (!errorMessage.isNullOrBlank()) "Scan Error" else "No Media Loaded",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        errorMessage ?: "Open the menu to select Rclone remotes or WebDAV mode, then tap Rescan.",
-                        color = if (!errorMessage.isNullOrBlank()) Color(0xFFFF8A80) else SecondaryText,
-                        fontSize = 12.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Button(
-                        onClick = onRescan,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Rescan Now", color = Color.White, fontWeight = FontWeight.Bold)
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    val isConfigured = remember(sections, errorMessage) {
+                        com.vidlab.app.data.remote.RcloneEngine.hasAnyConfiguredSource(ctx)
+                    }
+                    var showPasteDialog by remember { mutableStateOf(false) }
+                    var pasteText by remember { mutableStateOf("") }
+                    var showWebDavDialog by remember { mutableStateOf(false) }
+                    var webDavInput by remember { mutableStateOf("http://127.0.0.1:8080") }
+
+                    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+                    ) { uri ->
+                        if (uri != null) {
+                            runCatching {
+                                ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                            }.getOrNull()?.let { content ->
+                                com.vidlab.app.data.remote.RcloneEngine.importConfigText(ctx, content).onSuccess {
+                                    android.widget.Toast.makeText(ctx, "Imported ${it.size} remote(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                    onRescan()
+                                }.onFailure { err ->
+                                    android.widget.Toast.makeText(ctx, "Import failed: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+
+                    if (showPasteDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showPasteDialog = false },
+                            containerColor = SurfaceDark,
+                            title = { Text("Paste rclone.conf", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                            text = {
+                                OutlinedTextField(
+                                    value = pasteText,
+                                    onValueChange = { pasteText = it },
+                                    placeholder = { Text("[gdrive]\ntype = drive\n...", color = SecondaryText, fontSize = 12.sp) },
+                                    modifier = Modifier.fillMaxWidth().height(170.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = AccentViolet,
+                                        unfocusedBorderColor = BorderPurple
+                                    )
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    com.vidlab.app.data.remote.RcloneEngine.importConfigText(ctx, pasteText).onSuccess {
+                                        showPasteDialog = false
+                                        pasteText = ""
+                                        android.widget.Toast.makeText(ctx, "Saved ${it.size} remote(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                        onRescan()
+                                    }.onFailure { err ->
+                                        android.widget.Toast.makeText(ctx, "Invalid config: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                }) { Text("Save & Scan", color = AccentViolet, fontWeight = FontWeight.Bold) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showPasteDialog = false }) { Text("Cancel", color = SecondaryText) }
+                            }
+                        )
+                    }
+
+                    if (showWebDavDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showWebDavDialog = false },
+                            containerColor = SurfaceDark,
+                            title = { Text("Connect WebDAV Server", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Enter the URL of your local or remote WebDAV media server.", color = SecondaryText, fontSize = 12.sp)
+                                    OutlinedTextField(
+                                        value = webDavInput,
+                                        onValueChange = { webDavInput = it },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White,
+                                            focusedBorderColor = AccentViolet,
+                                            unfocusedBorderColor = BorderPurple
+                                        )
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    com.vidlab.app.data.remote.RcloneEngine.setWebDavBaseUrl(ctx, webDavInput)
+                                    com.vidlab.app.data.remote.RcloneEngine.setRcloneModeEnabled(ctx, false)
+                                    showWebDavDialog = false
+                                    onRescan()
+                                }) { Text("Connect & Scan", color = AccentViolet, fontWeight = FontWeight.Bold) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showWebDavDialog = false }) { Text("Cancel", color = SecondaryText) }
+                            }
+                        )
+                    }
+
+                    if (!isConfigured && errorMessage.isNullOrBlank()) {
+                        Surface(
+                            color = SurfaceDark,
+                            shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BorderPurple),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text("Welcome to VidLab", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Stream your personal cloud drives and WebDAV servers with automatic posters, episode tracking, and hardware/software playback.",
+                                    color = SecondaryText,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("1. Connect a cloud remote via rclone.conf or a WebDAV URL.", color = Color(0xFFCBD5E1), fontSize = 12.sp)
+                                    Text("2. Movies, shows, and anime are matched automatically from any folder layout.", color = Color(0xFFCBD5E1), fontSize = 12.sp)
+                                    Text("3. Open the top-left menu anytime to switch sources, decoders, or subtitles.", color = Color(0xFFCBD5E1), fontSize = 12.sp)
+                                }
+                                Button(
+                                    onClick = { importPicker.launch(arrayOf("*/*")) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Import rclone.conf File", color = Color(0xFF0A0E17), fontWeight = FontWeight.Bold)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedButton(
+                                        onClick = { showPasteDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderPurple),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Paste Config", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showWebDavDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderPurple),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("WebDAV URL", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            if (!errorMessage.isNullOrBlank()) "Connection Failed" else "No Media Found",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            errorMessage ?: "No supported video files were found in the selected source.",
+                            color = if (!errorMessage.isNullOrBlank()) Color(0xFFFF8A80) else SecondaryText,
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = onRescan,
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Rescan", color = Color(0xFF0A0E17), fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = { importPicker.launch(arrayOf("*/*")) },
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BorderPurple)
+                            ) {
+                                Text("Import Config", color = Color.White, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }

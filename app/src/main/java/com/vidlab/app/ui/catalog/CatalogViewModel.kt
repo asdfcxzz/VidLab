@@ -53,8 +53,13 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         loadMediaCenter()
     }
 
-    fun loadMediaCenter() {
+    fun loadMediaCenter(force: Boolean = false) {
         viewModelScope.launch {
+            if (!force && !com.vidlab.app.data.remote.RcloneEngine.hasAnyConfiguredSource(getApplication())) {
+                _isFeedLoading.value = false
+                _feedError.value = null
+                return@launch
+            }
             val cached = withContext(Dispatchers.IO) { repository.loadCachedFeed() }
             if (cached.isNotEmpty() && _feedSections.value.isEmpty()) {
                 _feedSections.value = cached

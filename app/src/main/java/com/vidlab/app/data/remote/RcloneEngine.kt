@@ -62,6 +62,12 @@ object RcloneEngine {
         return File(context.filesDir, "rclone_serve.conf")
     }
 
+    fun hasAnyConfiguredSource(context: Context): Boolean {
+        val hasCustomWebDav = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .contains("webdav_base_url")
+        return hasValidConfig(context) || hasCustomWebDav
+    }
+
     fun getWebDavBaseUrl(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString("webdav_base_url", "http://127.0.0.1:8080")

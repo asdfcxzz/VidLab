@@ -163,7 +163,7 @@ fun VidLabDrawerContent(
             title = { Text("Run Cloud File Renamer?", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "This will permanently rename video files and folders on your connected remote storage to match standard S01E01 / Title (Year) formatting.\n\n• Ensure you have write permissions (read-only remotes will fail).\n• Shared links or external playlists pointing to old filenames may break.",
+                    "This renames files on your connected storage into standard Title (Year) and S01E01 format so metadata matches cleanly.\n\nRequires write access (read-only drives cannot be renamed) and will update actual file names on your storage.",
                     color = Color(0xFFCBD5E1),
                     fontSize = 12.sp,
                     lineHeight = 17.sp
@@ -223,14 +223,6 @@ fun VidLabDrawerContent(
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 when (selectedTab) {
                     1 -> {
-                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("HOW SCANNING & RENAMER WORK", color = AccentViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
-                                Text("• Any Folder Layout: Movies, TV shows, and anime are detected automatically from filenames—no strict folder tree required.", color = Color(0xFFCBD5E1), fontSize = 11.sp, lineHeight = 15.sp)
-                                Text("• Renamer Warning: Renaming modifies actual filenames on your remote drive. Skip it if your drive is read-only.", color = Color(0xFFFBBF24), fontSize = 11.sp, lineHeight = 15.sp)
-                            }
-                        }
-
                         Text("MEDIA SOURCE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
