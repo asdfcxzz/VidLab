@@ -59,7 +59,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import android.graphics.Typeface
@@ -105,13 +107,31 @@ class PlayerActivity : ComponentActivity() {
         val playerPrefs = PlayerPreferences(this)
         val watchProgressStore = WatchProgressStore(this)
         val savedProg = watchProgressStore.getProgress(rawPath)
-        val extMode = if (playerPrefs.preferFfmpegAudio) {
-            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-        } else {
-            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+        val dMode = playerPrefs.decoderMode
+        val extMode = when {
+            dMode == 1 -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+            dMode == 2 || playerPrefs.preferFfmpegAudio -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            else -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
         }
-        val renderersFactory = DefaultRenderersFactory(this).setExtensionRendererMode(extMode)
-        val createdPlayer = ExoPlayer.Builder(this, renderersFactory).build().apply {
+        val codecSelector = MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+            val all = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+            when (dMode) {
+                1 -> all.filter { it.hardwareAccelerated }.ifEmpty { all }
+                2 -> all.filter { it.softwareOnly }.ifEmpty { all }
+                else -> all
+            }
+        }
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setExtensionRendererMode(extMode)
+            .setMediaCodecSelector(codecSelector)
+            .setEnableDecoderFallback(true)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15_000, 45_000, 1_500, 3_000)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        val createdPlayer = ExoPlayer.Builder(this, renderersFactory)
+            .setLoadControl(loadControl)
+            .build().apply {
             if (playerPrefs.autoEnglishTracks) {
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()

@@ -57,6 +57,18 @@ class PlayerPreferences(context: Context) {
         get() = prefs.getBoolean("auto_skip_segments", false)
         set(value) = prefs.edit().putBoolean("auto_skip_segments", value).apply()
 
+    var decoderMode: Int
+        get() = prefs.getInt("decoder_mode", 0) // 0=Auto (HW+FFmpeg), 1=HW Only, 2=SW/FFmpeg
+        set(value) = prefs.edit().putInt("decoder_mode", value).apply()
+
+    var subtitleDelayMs: Long
+        get() = prefs.getLong("subtitle_delay_ms", 0L)
+        set(value) = prefs.edit().putLong("subtitle_delay_ms", value).apply()
+
+    var longPressBoostEnabled: Boolean
+        get() = prefs.getBoolean("long_press_boost_enabled", true)
+        set(value) = prefs.edit().putBoolean("long_press_boost_enabled", value).apply()
+
     fun resetToDefaults() {
         prefs.edit().clear().apply()
     }

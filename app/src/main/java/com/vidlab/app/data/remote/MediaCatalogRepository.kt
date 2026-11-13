@@ -177,26 +177,34 @@ class MediaCatalogRepository(
         val seriesBuckets = mutableMapOf<String, MutableList<MediaFile>>()
         val movieFiles = mutableListOf<MediaFile>()
 
+        val seasonFolderCheck = Regex("""(?i)^(?:season|s)\s*0*\d{1,2}$""")
         for (file in files) {
             val parts = file.path.trim('/').split('/')
-            val inMoviesFolder = parts.any { it.equals("MOVIES", ignoreCase = true) }
+            val parentDirs = parts.dropLast(1)
+            val inMoviesFolder = parentDirs.any { it.equals("MOVIES", ignoreCase = true) }
+            val inExplicitSeriesFolder = parentDirs.any {
+                it.equals("ANIME", ignoreCase = true) ||
+                it.equals("SHOWS", ignoreCase = true) ||
+                it.equals("TV SHOWS", ignoreCase = true) ||
+                it.equals("TV", ignoreCase = true) ||
+                seasonFolderCheck.matches(it.trim())
+            }
 
-            // Strict Separation: Everything in /MOVIES is treated as a standalone movie
-            if (inMoviesFolder) {
+            val fileParsed = FilenameSanitizer.parse(file.name, forceMovie = false)
+
+            // Standalone movie if inside /MOVIES, or if filename has no episode/season markers and isn't in a series/season folder
+            if (inMoviesFolder || (!fileParsed.isSeries && !inExplicitSeriesFolder)) {
                 movieFiles.add(file)
                 continue
             }
 
-            // Everything in /ANIME and /SHOWS is treated as a series
-            val fileParsed = FilenameSanitizer.parse(file.name, forceMovie = false)
             var detectedKey: String? = null
-
             if (fileParsed.cleanTitle.length > 2 && fileParsed.seriesKey !in ignoredCategoryFolders) {
                 detectedKey = fileParsed.seriesKey
             }
 
             if (detectedKey == null) {
-                for (seg in parts.reversed().drop(1)) {
+                for (seg in parentDirs.reversed()) {
                     val p = FilenameSanitizer.parse(seg, forceMovie = false)
                     if (p.cleanTitle.length > 2 && p.seriesKey !in ignoredCategoryFolders && !p.cleanTitle.startsWith("Season", ignoreCase = true)) {
                         detectedKey = p.seriesKey

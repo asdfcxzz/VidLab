@@ -104,6 +104,9 @@ fun VidLabDrawerContent(
     var resizeMode by remember { mutableIntStateOf(playerPrefs.defaultResizeMode) }
     var autoEnglish by remember { mutableStateOf(playerPrefs.autoEnglishTracks) }
     var preferFfmpeg by remember { mutableStateOf(playerPrefs.preferFfmpegAudio) }
+    var decoderMode by remember { mutableIntStateOf(playerPrefs.decoderMode) }
+    var longPressBoost by remember { mutableStateOf(playerPrefs.longPressBoostEnabled) }
+    var showRenamerConfirmDialog by remember { mutableStateOf(false) }
     var volGesture by remember { mutableStateOf(playerPrefs.volumeGestureEnabled) }
     var brightGesture by remember { mutableStateOf(playerPrefs.brightnessGestureEnabled) }
     var skipEnabled by remember { mutableStateOf(playerPrefs.skipSegmentsEnabled) }
@@ -153,6 +156,31 @@ fun VidLabDrawerContent(
         )
     }
 
+    if (showRenamerConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenamerConfirmDialog = false },
+            containerColor = SurfaceDark,
+            title = { Text("Run Cloud File Renamer?", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This will permanently rename video files and folders on your connected remote storage to match standard S01E01 / Title (Year) formatting.\n\n• Ensure you have write permissions (read-only remotes will fail).\n• Shared links or external playlists pointing to old filenames may break.",
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRenamerConfirmDialog = false
+                    onRunRenamerClick()
+                }) { Text("Proceed & Rename", color = Color(0xFFFBBF24), fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenamerConfirmDialog = false }) { Text("Cancel", color = Color(0xFF94A3B8)) }
+            }
+        )
+    }
+
     ModalDrawerSheet(
         drawerContainerColor = DeepPurpleBg,
         drawerContentColor = Color.White,
@@ -195,6 +223,14 @@ fun VidLabDrawerContent(
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 when (selectedTab) {
                     1 -> {
+                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("HOW SCANNING & RENAMER WORK", color = AccentViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                                Text("• Any Folder Layout: Movies, TV shows, and anime are detected automatically from filenames—no strict folder tree required.", color = Color(0xFFCBD5E1), fontSize = 11.sp, lineHeight = 15.sp)
+                                Text("• Renamer Warning: Renaming modifies actual filenames on your remote drive. Skip it if your drive is read-only.", color = Color(0xFFFBBF24), fontSize = 11.sp, lineHeight = 15.sp)
+                            }
+                        }
+
                         Text("MEDIA SOURCE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -311,7 +347,7 @@ fun VidLabDrawerContent(
                                             Text("Rescan", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                         OutlinedButton(
-                                            onClick = onRunRenamerClick,
+                                            onClick = { showRenamerConfirmDialog = true },
                                             border = BorderStroke(1.dp, AccentViolet),
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
@@ -629,7 +665,42 @@ fun VidLabDrawerContent(
                                     }
                                 }
                                 DrawerToggleRow("Auto English Audio & Subs", "Prefer EN tracks automatically", autoEnglish) { autoEnglish = it; playerPrefs.autoEnglishTracks = it }
-                                DrawerToggleRow("Prioritize FFmpeg Decoder", "Force software decoding for EAC3/DTS", preferFfmpeg) { preferFfmpeg = it; playerPrefs.preferFfmpegAudio = it }
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Video & Audio Decoder", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        when (decoderMode) {
+                                            1 -> "HW Only: Lowest battery & heat; may fail on 10-bit Hi10P or DTS."
+                                            2 -> "SW / FFmpeg: Fixes green artifacts & unsupported audio; higher CPU use."
+                                            else -> "Auto: Hardware video + FFmpeg audio fallback (recommended)."
+                                        },
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.sp
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                        listOf("Auto", "HW Only", "SW / FFmpeg").forEachIndexed { idx, label ->
+                                            val sel = decoderMode == idx
+                                            Surface(
+                                                color = if (sel) AccentViolet else BorderPurple.copy(alpha = 0.6f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.weight(1f).clickable {
+                                                    decoderMode = idx
+                                                    playerPrefs.decoderMode = idx
+                                                    preferFfmpeg = (idx == 2)
+                                                    playerPrefs.preferFfmpegAudio = (idx == 2)
+                                                }
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 7.dp)) {
+                                                    Text(label, color = if (sel) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                HorizontalDivider(color = BorderPurple, thickness = 0.8.dp)
+                                DrawerToggleRow("Long-Press 2x Speed Boost", "Hold screen during playback for temporary 2.0x speed", longPressBoost) {
+                                    longPressBoost = it; playerPrefs.longPressBoostEnabled = it
+                                }
                                 DrawerToggleRow("Volume Swipe Gesture", "Swipe vertically on right side", volGesture) { volGesture = it; playerPrefs.volumeGestureEnabled = it }
                                 DrawerToggleRow("Brightness Swipe Gesture", "Swipe vertically on left side", brightGesture) { brightGesture = it; playerPrefs.brightnessGestureEnabled = it }
                             }
@@ -683,7 +754,7 @@ fun VidLabDrawerContent(
                                 seekStep = 10; playerPrefs.seekStepSeconds = 10
                                 resizeMode = 0; playerPrefs.defaultResizeMode = 0
                                 autoEnglish = true; playerPrefs.autoEnglishTracks = true
-                                preferFfmpeg = false; playerPrefs.preferFfmpegAudio = false
+                                preferFfmpeg = false; playerPrefs.preferFfmpegAudio = false; decoderMode = 0; playerPrefs.decoderMode = 0; longPressBoost = true; playerPrefs.longPressBoostEnabled = true
                                 volGesture = true; playerPrefs.volumeGestureEnabled = true
                                 brightGesture = true; playerPrefs.brightnessGestureEnabled = true
                                 subSize = 22f; playerPrefs.subtitleFontSizeSp = 22f
