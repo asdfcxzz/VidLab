@@ -225,6 +225,75 @@ fun MediaCenterScreen(
     val focusManager = LocalFocusManager.current
 
     val context = androidx.compose.ui.platform.LocalContext.current
+    var pendingSelectRemotes by remember { mutableStateOf<List<com.vidlab.app.data.remote.RcloneRemoteConfig>?>(null) }
+    val topImportPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }.getOrNull()?.let { content ->
+                com.vidlab.app.data.remote.RcloneEngine.importConfigText(context, content).onSuccess { list ->
+                    pendingSelectRemotes = list
+                }.onFailure { err ->
+                    android.widget.Toast.makeText(context, "Import failed: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    pendingSelectRemotes?.let { list ->
+        AlertDialog(
+            onDismissRequest = {
+                pendingSelectRemotes = null
+                onRescan()
+            },
+            containerColor = SurfaceDark,
+            title = { Text("Select Remotes to Use", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Choose which remotes VidLab should scan and stream from:", color = SecondaryText, fontSize = 12.sp)
+                    list.forEachIndexed { idx, rem ->
+                        Surface(
+                            color = DeepPurpleBg,
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, if (rem.enabled) AccentViolet else BorderPurple),
+                            onClick = {
+                                pendingSelectRemotes = list.mapIndexed { i, r -> if (i == idx) r.copy(enabled = !r.enabled) else r }
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(rem.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Type: ${rem.type}", color = SecondaryText, fontSize = 11.sp)
+                                }
+                                Checkbox(
+                                    checked = rem.enabled,
+                                    onCheckedChange = { checked ->
+                                        pendingSelectRemotes = list.mapIndexed { i, r -> if (i == idx) r.copy(enabled = checked) else r }
+                                    },
+                                    colors = CheckboxDefaults.colors(checkedColor = AccentViolet, uncheckedColor = SecondaryText)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    com.vidlab.app.data.remote.RcloneEngine.saveConfiguredRemotes(context, list)
+                    com.vidlab.app.data.remote.RcloneEngine.setRcloneModeEnabled(context, true)
+                    com.vidlab.app.data.remote.RcloneEngine.restartServeIfNeeded(context)
+                    pendingSelectRemotes = null
+                    onRescan()
+                }) { Text("Save & Scan", color = AccentViolet, fontWeight = FontWeight.Bold) }
+            }
+        )
+    }
     val progressStore = remember { com.vidlab.app.data.prefs.WatchProgressStore(context) }
     val heroItem by remember(sections) {
         derivedStateOf {
@@ -326,22 +395,7 @@ fun MediaCenterScreen(
                     var showWebDavDialog by remember { mutableStateOf(false) }
                     var webDavInput by remember { mutableStateOf("http://127.0.0.1:8080") }
 
-                    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(
-                        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-                    ) { uri ->
-                        if (uri != null) {
-                            runCatching {
-                                ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                            }.getOrNull()?.let { content ->
-                                com.vidlab.app.data.remote.RcloneEngine.importConfigText(ctx, content).onSuccess {
-                                    android.widget.Toast.makeText(ctx, "Imported ${it.size} remote(s)", android.widget.Toast.LENGTH_SHORT).show()
-                                    onRescan()
-                                }.onFailure { err ->
-                                    android.widget.Toast.makeText(ctx, "Import failed: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    }
+
 
                     if (showPasteDialog) {
                         AlertDialog(
@@ -364,11 +418,10 @@ fun MediaCenterScreen(
                             },
                             confirmButton = {
                                 TextButton(onClick = {
-                                    com.vidlab.app.data.remote.RcloneEngine.importConfigText(ctx, pasteText).onSuccess {
+                                    com.vidlab.app.data.remote.RcloneEngine.importConfigText(ctx, pasteText).onSuccess { list ->
                                         showPasteDialog = false
                                         pasteText = ""
-                                        android.widget.Toast.makeText(ctx, "Saved ${it.size} remote(s)", android.widget.Toast.LENGTH_SHORT).show()
-                                        onRescan()
+                                        pendingSelectRemotes = list
                                     }.onFailure { err ->
                                         android.widget.Toast.makeText(ctx, "Invalid config: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
                                     }
@@ -440,7 +493,7 @@ fun MediaCenterScreen(
                                     Text("3. Open the top-left menu anytime to switch sources, decoders, or subtitles.", color = Color(0xFFCBD5E1), fontSize = 12.sp)
                                 }
                                 Button(
-                                    onClick = { importPicker.launch(arrayOf("*/*")) },
+                                    onClick = { topImportPicker.launch(arrayOf("*/*")) },
                                     colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.fillMaxWidth()
@@ -489,7 +542,7 @@ fun MediaCenterScreen(
                                 Text("Rescan", color = Color(0xFF0A0E17), fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
-                                onClick = { importPicker.launch(arrayOf("*/*")) },
+                                onClick = { topImportPicker.launch(arrayOf("*/*")) },
                                 shape = RoundedCornerShape(10.dp),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, BorderPurple)
                             ) {

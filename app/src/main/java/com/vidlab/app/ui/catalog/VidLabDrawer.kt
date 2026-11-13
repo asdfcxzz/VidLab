@@ -75,6 +75,7 @@ fun VidLabDrawerContent(
     var pasteConfText by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
 
+    var drawerPendingSelectRemotes by remember { mutableStateOf<List<RcloneRemoteConfig>?>(null) }
     val pickConfLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -85,7 +86,7 @@ fun VidLabDrawerContent(
                 RcloneEngine.importConfigText(context, content).onSuccess { list ->
                     rcloneRemotes = list
                     useRclone = true
-                    Toast.makeText(context, "Imported ${list.size} rclone remote(s)", Toast.LENGTH_SHORT).show()
+                    drawerPendingSelectRemotes = list
                 }.onFailure { err ->
                     Toast.makeText(context, "Import failed: ${err.message}", Toast.LENGTH_LONG).show()
                 }
@@ -144,7 +145,7 @@ fun VidLabDrawerContent(
                         rcloneRemotes = list
                         useRclone = true
                         showPasteConfDialog = false
-                        Toast.makeText(context, "Saved ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
+                        drawerPendingSelectRemotes = list
                     }.onFailure { err ->
                         Toast.makeText(context, err.message ?: "Invalid config", Toast.LENGTH_LONG).show()
                     }
@@ -152,6 +153,57 @@ fun VidLabDrawerContent(
             },
             dismissButton = {
                 TextButton(onClick = { showPasteConfDialog = false }) { Text("Cancel", color = Color(0xFF94A3B8)) }
+            }
+        )
+    }
+
+    drawerPendingSelectRemotes?.let { list ->
+        AlertDialog(
+            onDismissRequest = { drawerPendingSelectRemotes = null },
+            containerColor = SurfaceDark,
+            title = { Text("Select Remotes to Use", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Choose which remotes VidLab should scan and stream from:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    list.forEachIndexed { idx, rem ->
+                        Surface(
+                            color = DeepPurpleBg,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(0.8.dp, if (rem.enabled) AccentViolet else BorderPurple),
+                            onClick = {
+                                drawerPendingSelectRemotes = list.mapIndexed { i, r -> if (i == idx) r.copy(enabled = !r.enabled) else r }
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(rem.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Type: ${rem.type}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                }
+                                Checkbox(
+                                    checked = rem.enabled,
+                                    onCheckedChange = { checked ->
+                                        drawerPendingSelectRemotes = list.mapIndexed { i, r -> if (i == idx) r.copy(enabled = checked) else r }
+                                    },
+                                    colors = CheckboxDefaults.colors(checkedColor = AccentViolet, uncheckedColor = Color(0xFF94A3B8))
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    RcloneEngine.saveConfiguredRemotes(context, list)
+                    RcloneEngine.setRcloneModeEnabled(context, true)
+                    RcloneEngine.restartServeIfNeeded(context)
+                    rcloneRemotes = list
+                    drawerPendingSelectRemotes = null
+                    onRescanClick()
+                }) { Text("Save & Scan", color = AccentViolet, fontWeight = FontWeight.Bold) }
             }
         )
     }
@@ -255,7 +307,7 @@ fun VidLabDrawerContent(
                                                     if (found != null) {
                                                         RcloneEngine.importConfigText(context, found.readText()).onSuccess { list ->
                                                             rcloneRemotes = list; useRclone = true
-                                                            Toast.makeText(context, "Loaded ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
+                                                            drawerPendingSelectRemotes = list
                                                         }
                                                     } else {
                                                         pasteConfText = if (RcloneEngine.getConfigFile(context).exists()) RcloneEngine.getConfigFile(context).readText() else ""
