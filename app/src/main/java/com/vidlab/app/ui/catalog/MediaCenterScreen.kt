@@ -42,81 +42,218 @@ private val BorderPurple = Color(0xFF222E46)
 private val AccentViolet = Color(0xFF8B85CF)
 private val SecondaryText = Color(0xFF94A3B8)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun LastWatchedHero(
-    item: ScrapedMediaItem,
+fun HeroCarousel(
+    items: List<ScrapedMediaItem>,
     onWatchNow: (ScrapedMediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgUrl = item.backdropUrl ?: item.posterUrl
+    if (items.isEmpty()) return
+    val pagerState = rememberPagerState(pageCount = { items.size })
 
-    Box(modifier = modifier.fillMaxWidth().height(510.dp)) {
-        if (!bgUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = bgUrl,
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+    LaunchedEffect(items.size) {
+        if (items.size > 1) {
+            while (true) {
+                delay(5000L)
+                val next = (pagerState.currentPage + 1) % items.size
+                pagerState.animateScrollToPage(next)
+            }
         }
+    }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0x6609070F), Color.Transparent, DeepPurpleBg),
-                        startY = 0f,
-                        endY = 1100f
+    Box(modifier = modifier.fillMaxWidth().height(490.dp)) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val item = items[page]
+            val bgUrl = item.backdropUrl ?: item.posterUrl
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (!bgUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = bgUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                )
-        )
+                }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp, start = 20.dp, end = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = item.title,
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            val genres = item.metadata?.genres?.take(3) ?: emptyList()
-            if (genres.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    genres.forEach { genre ->
-                        Surface(
-                            color = Color(0x661E1A2E),
-                            shape = CircleShape,
-                            modifier = Modifier.border(0.5.dp, BorderPurple, CircleShape)
-                        ) {
-                            Text(
-                                text = genre,
-                                color = Color(0xFFDDD8EC),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color(0x6609070F), Color.Transparent, DeepPurpleBg),
+                                startY = 0f,
+                                endY = 1050f
                             )
+                        )
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 34.dp, start = 20.dp, end = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = item.title,
+                        color = Color.White,
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val genres = item.metadata?.genres?.take(3) ?: emptyList()
+                    if (genres.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            genres.forEach { genre ->
+                                Surface(
+                                    color = Color(0x661E1A2E),
+                                    shape = CircleShape,
+                                    modifier = Modifier.border(0.5.dp, BorderPurple, CircleShape)
+                                ) {
+                                    Text(
+                                        text = genre,
+                                        color = Color(0xFFDDD8EC),
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
                         }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    Button(
+                        onClick = { onWatchNow(item) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                        shape = CircleShape,
+                        modifier = Modifier.width(175.dp).height(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "Watch Now", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
+        if (items.size > 1) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(items.size) { index ->
+                    val selected = pagerState.currentPage == index
+                    Box(
+                        modifier = Modifier
+                            .height(5.dp)
+                            .width(if (selected) 18.dp else 5.dp)
+                            .clip(CircleShape)
+                            .background(if (selected) AccentViolet else Color.White.copy(alpha = 0.35f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ResumePlaybackBar(
+    item: ScrapedMediaItem,
+    episodeLabel: String?,
+    onResume: (ScrapedMediaItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = { onResume(item) },
+        color = SurfaceDark,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderPurple),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.width(44.dp).height(62.dp)
+            ) {
+                val thumbUrl = item.posterUrl ?: item.backdropUrl
+                if (!thumbUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = thumbUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(DeepPurpleBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Movie, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "CONTINUE WATCHING",
+                    color = AccentViolet,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
+                )
+                Text(
+                    text = item.title,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!episodeLabel.isNullOrBlank()) {
+                    Text(
+                        text = episodeLabel,
+                        color = SecondaryText,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Button(
-                onClick = { onWatchNow(item) },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF)),
+                onClick = { onResume(item) },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
                 shape = CircleShape,
-                modifier = Modifier.width(185.dp).height(42.dp)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Text(text = "Continue watching", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Resume", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -329,12 +466,41 @@ fun MediaCenterScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            val currentHero = heroItem
-            if (!isSearchActive && currentHero != null) {
-                item(key = "hero_${currentHero.id}") {
-                    LastWatchedHero(
-                        item = currentHero,
+            val carouselItems = sections.flatMap { it.items }.distinctBy { it.id }.take(6)
+            val resumeEntry = run {
+                val allItems = sections.flatMap { it.items }
+                var found: Pair<ScrapedMediaItem, String>? = null
+                for (item in allItems) {
+                    val ep = item.seasons.flatMap { it.episodes }.firstOrNull { ep ->
+                        val p = progressStore.getProgress(ep.file.path)
+                        p != null && !p.watched && p.positionMs > 0L
+                    }
+                    if (ep != null) {
+                        val label = if (item.isSeries) {
+                            String.format("S%02dE%02d • %s", ep.seasonNumber, ep.episodeNumber, ep.title)
+                        } else {
+                            "Movie"
+                        }
+                        found = (item to label)
+                        break
+                    }
+                }
+                found
+            }
+            if (!isSearchActive && carouselItems.isNotEmpty()) {
+                item(key = "hero_carousel") {
+                    HeroCarousel(
+                        items = carouselItems,
                         onWatchNow = { onSelectItem(it) }
+                    )
+                }
+            }
+            if (!isSearchActive && resumeEntry != null) {
+                item(key = "resume_playback_bar") {
+                    ResumePlaybackBar(
+                        item = resumeEntry.first,
+                        episodeLabel = resumeEntry.second,
+                        onResume = { onSelectItem(it) }
                     )
                 }
             }

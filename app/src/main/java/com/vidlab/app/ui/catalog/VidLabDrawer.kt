@@ -68,6 +68,11 @@ fun VidLabDrawerContent(
     var useRclone by remember { mutableStateOf(RcloneEngine.isRcloneModeEnabled(context)) }
     var webDavUrl by remember { mutableStateOf(RcloneEngine.getWebDavBaseUrl(context)) }
     var rcloneRemotes by remember { mutableStateOf(RcloneEngine.getConfiguredRemotes(context)) }
+    LaunchedEffect(sections) {
+        useRclone = RcloneEngine.isRcloneModeEnabled(context)
+        webDavUrl = RcloneEngine.getWebDavBaseUrl(context)
+        rcloneRemotes = RcloneEngine.getConfiguredRemotes(context)
+    }
     val drawerPrefs = remember { context.getSharedPreferences("vidlab_drawer_prefs", android.content.Context.MODE_PRIVATE) }
     var showMediaSourceSection by remember { mutableStateOf(drawerPrefs.getBoolean("show_media_source_section", true)) }
     var showRcloneRemotes by remember { mutableStateOf(drawerPrefs.getBoolean("show_rclone_remotes", false)) }
