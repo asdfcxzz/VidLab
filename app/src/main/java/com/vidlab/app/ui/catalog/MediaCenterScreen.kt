@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.vidlab.app.data.model.MediaFeedSection
 import com.vidlab.app.data.model.ScrapedMediaItem
 import kotlinx.coroutines.delay
@@ -72,8 +74,18 @@ fun HeroCarousel(
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (!bgUrl.isNullOrBlank()) {
+                    val heroCtx = androidx.compose.ui.platform.LocalContext.current
+                    val heroReq = remember(bgUrl) {
+                        ImageRequest.Builder(heroCtx)
+                            .data(bgUrl)
+                            .size(1080, 640)
+                            .precision(Precision.INEXACT)
+                            .bitmapConfig(android.graphics.Bitmap.Config.RGB_565)
+                            .crossfade(false)
+                            .build()
+                    }
                     AsyncImage(
-                        model = bgUrl,
+                        model = heroReq,
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -202,8 +214,18 @@ fun ResumePlaybackBar(
             ) {
                 val thumbUrl = item.posterUrl ?: item.backdropUrl
                 if (!thumbUrl.isNullOrBlank()) {
+                    val resCtx = androidx.compose.ui.platform.LocalContext.current
+                    val resReq = remember(thumbUrl) {
+                        ImageRequest.Builder(resCtx)
+                            .data(thumbUrl)
+                            .size(140, 200)
+                            .precision(Precision.INEXACT)
+                            .bitmapConfig(android.graphics.Bitmap.Config.RGB_565)
+                            .crossfade(false)
+                            .build()
+                    }
                     AsyncImage(
-                        model = thumbUrl,
+                        model = resReq,
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -287,8 +309,18 @@ fun MediaCenterCard(
             Box(modifier = Modifier.fillMaxSize()) {
                 val posterUrl = item.posterUrl ?: item.backdropUrl
                 if (!posterUrl.isNullOrBlank()) {
+                    val cardCtx = androidx.compose.ui.platform.LocalContext.current
+                    val cardReq = remember(posterUrl) {
+                        ImageRequest.Builder(cardCtx)
+                            .data(posterUrl)
+                            .size(360, 540)
+                            .precision(Precision.INEXACT)
+                            .bitmapConfig(android.graphics.Bitmap.Config.RGB_565)
+                            .crossfade(false)
+                            .build()
+                    }
                     AsyncImage(
-                        model = posterUrl,
+                        model = cardReq,
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -458,6 +490,29 @@ fun MediaCenterScreen(
             .fillMaxSize()
             .background(DeepPurpleBg)
     ) {
+        val carouselItems = remember(sections) {
+            sections.flatMap { it.items }.distinctBy { it.id }.take(6)
+        }
+        val resumeEntry = remember(sections) {
+            val allItems = sections.flatMap { it.items }
+            var found: Pair<ScrapedMediaItem, String>? = null
+            for (item in allItems) {
+                val ep = item.seasons.flatMap { it.episodes }.firstOrNull { ep ->
+                    val p = progressStore.getProgress(ep.file.path)
+                    p != null && !p.watched && p.positionMs > 0L
+                }
+                if (ep != null) {
+                    val label = if (item.isSeries) {
+                        String.format("S%02dE%02d • %s", ep.seasonNumber, ep.episodeNumber, ep.title)
+                    } else {
+                        "Movie"
+                    }
+                    found = (item to label)
+                    break
+                }
+            }
+            found
+        }
         LazyColumn(
             contentPadding = PaddingValues(
                 top = if (isSearchActive) 136.dp else 0.dp,
@@ -466,27 +521,6 @@ fun MediaCenterScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            val carouselItems = sections.flatMap { it.items }.distinctBy { it.id }.take(6)
-            val resumeEntry = run {
-                val allItems = sections.flatMap { it.items }
-                var found: Pair<ScrapedMediaItem, String>? = null
-                for (item in allItems) {
-                    val ep = item.seasons.flatMap { it.episodes }.firstOrNull { ep ->
-                        val p = progressStore.getProgress(ep.file.path)
-                        p != null && !p.watched && p.positionMs > 0L
-                    }
-                    if (ep != null) {
-                        val label = if (item.isSeries) {
-                            String.format("S%02dE%02d • %s", ep.seasonNumber, ep.episodeNumber, ep.title)
-                        } else {
-                            "Movie"
-                        }
-                        found = (item to label)
-                        break
-                    }
-                }
-                found
-            }
             if (!isSearchActive && carouselItems.isNotEmpty()) {
                 item(key = "hero_carousel") {
                     HeroCarousel(

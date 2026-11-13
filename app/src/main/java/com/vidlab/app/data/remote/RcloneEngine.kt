@@ -302,11 +302,14 @@ object RcloneEngine {
             "--config", runtimeConf.absolutePath,
             "--addr", "127.0.0.1:$STREAM_PORT",
             "--vfs-cache-mode", "minimal",
-            "--vfs-read-chunk-size", "16M",
+            "--vfs-read-chunk-size", "4M",
             "--vfs-read-chunk-size-limit", "128M",
-            "--buffer-size", "16M",
-            "--dir-cache-time", "30s",
-            "--no-modtime"
+            "--vfs-read-ahead", "64M",
+            "--buffer-size", "32M",
+            "--dir-cache-time", "10m",
+            "--transfers", "4",
+            "--no-modtime",
+            "--no-checksum"
         )
 
         val servePb = ProcessBuilder(cmd).redirectErrorStream(true)
@@ -321,9 +324,9 @@ object RcloneEngine {
             runCatching { proc.inputStream.bufferedReader().forEachLine { } }
         }.start()
 
-        repeat(80) {
+        repeat(150) {
             if (isPortReachable()) return@withContext true
-            delay(100)
+            delay(40)
         }
         isPortReachable()
     }
