@@ -470,7 +470,7 @@ fun VidLabDrawerContent(
                                 Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { DownloadTaskManager.clearFinished() })
                             }
                         }
-                                                Text("Saved videos auto-play offline without internet", color = Color(0xFF64748B), fontSize = 10.sp)
+                                                Text("Downloaded & offline videos auto-play without internet", color = Color(0xFF64748B), fontSize = 10.sp)
                         var saveInApp by remember { mutableStateOf(DownloadTaskManager.isSaveInAppEnabled(context)) }
                         var offlineOnly by remember { mutableStateOf(DownloadTaskManager.isOfflineOnlyMode(context)) }
                         var offlineFiles by remember { mutableStateOf(DownloadTaskManager.listAllDownloadedFiles(context)) }
@@ -482,8 +482,8 @@ fun VidLabDrawerContent(
 
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("Offline Mode (Local Only)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("Block remote streaming; play saved files only", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                        Text("Offline Mode", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Play saved videos only; block network streaming", color = Color(0xFF94A3B8), fontSize = 10.sp)
                                     }
                                     Switch(
                                         checked = offlineOnly,
@@ -533,7 +533,7 @@ fun VidLabDrawerContent(
                                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(task.fileName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                    Text(task.folderName, color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text("${task.folderName} • ${if (task.saveInApp) "In-App Offline" else "Downloads/VidLab"}", color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 }
                                                 if (task.status == DownloadStatus.QUEUED || task.status == DownloadStatus.DOWNLOADING) {
                                                     IconButton(onClick = { DownloadTaskManager.cancelTask(context, task.id) }, modifier = Modifier.size(26.dp)) {
@@ -638,7 +638,7 @@ fun VidLabDrawerContent(
                                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(task.fileName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                    Text(task.folderName, color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text("${task.folderName} • ${if (task.saveInApp) "In-App Offline" else "Downloads/VidLab"}", color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 }
                                                 if (task.status == DownloadStatus.QUEUED || task.status == DownloadStatus.DOWNLOADING) {
                                                     IconButton(onClick = { DownloadTaskManager.cancelTask(context, task.id) }, modifier = Modifier.size(26.dp)) {

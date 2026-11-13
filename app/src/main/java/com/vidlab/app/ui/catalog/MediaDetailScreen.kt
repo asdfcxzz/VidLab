@@ -263,22 +263,22 @@ fun MediaDetailScreen(
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp)) },
-                                    text = { Text(if (item.isSeries) "Batch Download Current Folder" else "Download Movie", color = Color.White, fontSize = 13.sp) },
+                                    text = { Text(if (item.isSeries) "Download All Episodes" else "Download Movie", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         val files = if (item.isSeries && allEpisodes.isNotEmpty()) allEpisodes.map { it.file } else listOf(item.primaryFile)
-                                        DownloadTaskManager.enqueueBatch(context, files, item.title)
-                                        Toast.makeText(context, "Queued ${files.size} file(s) for download", Toast.LENGTH_SHORT).show()
+                                        DownloadTaskManager.enqueueBatch(context, files, item.title, saveInApp = false)
+                                        Toast.makeText(context, "Downloading ${files.size} file(s) to Downloads/VidLab", Toast.LENGTH_SHORT).show()
                                     }
                                 )
                                 DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp)) },
-                                    text = { Text(if (item.isSeries) "Save All Offline in App" else "Save Offline in App", color = Color.White, fontSize = 13.sp) },
+                                    text = { Text(if (item.isSeries) "Save All Episodes Offline" else "Save Movie Offline", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
                                         val files = if (item.isSeries && allEpisodes.isNotEmpty()) allEpisodes.map { it.file } else listOf(item.primaryFile)
                                         DownloadTaskManager.enqueueBatch(context, files, item.title, saveInApp = true)
-                                        Toast.makeText(context, "Saving ${files.size} file(s) offline inside app", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Saving ${files.size} file(s) offline in app", Toast.LENGTH_SHORT).show()
                                     }
                                 )
                                 DropdownMenuItem(
@@ -532,20 +532,39 @@ fun MediaDetailScreen(
                                     onClick = {
                                         val picked = allEpisodes.filter { it.file.path in selectedEpisodePaths }.map { it.file }
                                         if (picked.isNotEmpty()) {
-                                            DownloadTaskManager.enqueueBatch(context, picked, item.title)
-                                            Toast.makeText(context, "Queued ${picked.size} episode(s)", Toast.LENGTH_SHORT).show()
+                                            DownloadTaskManager.enqueueBatch(context, picked, item.title, saveInApp = false)
+                                            Toast.makeText(context, "Downloading ${picked.size} episode(s)", Toast.LENGTH_SHORT).show()
                                         }
                                         selectedEpisodePaths.clear()
                                         selectionMode = false
                                     },
                                     enabled = selectedEpisodePaths.isNotEmpty(),
                                     colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Download", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("Download", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        val picked = allEpisodes.filter { it.file.path in selectedEpisodePaths }.map { it.file }
+                                        if (picked.isNotEmpty()) {
+                                            DownloadTaskManager.enqueueBatch(context, picked, item.title, saveInApp = true)
+                                            Toast.makeText(context, "Saving ${picked.size} episode(s) offline", Toast.LENGTH_SHORT).show()
+                                        }
+                                        selectedEpisodePaths.clear()
+                                        selectionMode = false
+                                    },
+                                    enabled = selectedEpisodePaths.isNotEmpty(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("Offline", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                                 IconButton(onClick = { selectedEpisodePaths.clear(); selectionMode = false }, modifier = Modifier.size(32.dp)) {
                                     Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp))
@@ -618,15 +637,34 @@ fun MediaDetailScreen(
                         }
                         Surface(
                             onClick = {
-                                DownloadTaskManager.enqueueFile(context, targetFile, item.title)
-                                Toast.makeText(context, "Downloading ${targetFile.name}", Toast.LENGTH_SHORT).show()
+                                DownloadTaskManager.enqueueFile(context, targetFile, item.title, saveInApp = false)
+                                Toast.makeText(context, "Downloading to Downloads/VidLab", Toast.LENGTH_SHORT).show()
                                 actionTargetFile = null
                             },
                             color = DeepPurpleBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderPurple), modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
-                                Text("Download Episode", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Column {
+                                    Text("Download Episode", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Save to public Downloads/VidLab folder", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                        Surface(
+                            onClick = {
+                                DownloadTaskManager.enqueueFile(context, targetFile, item.title, saveInApp = true)
+                                Toast.makeText(context, "Saving episode offline in app", Toast.LENGTH_SHORT).show()
+                                actionTargetFile = null
+                            },
+                            color = DeepPurpleBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderPurple), modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text("Save Episode Offline", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Store inside app for offline playback", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                }
                             }
                         }
                         Surface(

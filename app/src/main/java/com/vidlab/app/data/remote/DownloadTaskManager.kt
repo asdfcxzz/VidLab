@@ -213,6 +213,8 @@ object DownloadTaskManager {
         try {
             if (RcloneEngine.isRcloneModeEnabled(context)) {
                 RcloneEngine.startForegroundServeService(context)
+                val ready = RcloneEngine.ensureServerRunning(context)
+                if (!ready) delay(1500L)
             }
             val streamUrl = RcloneEngine.buildStreamUrl(context, seed.remotePath)
             val baseRoot = if (seed.saveInApp) getAppOfflineRoot(context) else getPublicOfflineRoot()
