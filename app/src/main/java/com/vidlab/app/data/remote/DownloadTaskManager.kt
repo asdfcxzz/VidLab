@@ -30,6 +30,7 @@ data class DownloadTaskItem(
     val fileName: String,
     val remotePath: String,
     val folderName: String,
+    val saveInApp: Boolean = false,
     val bytesDownloaded: Long = 0L,
     val totalBytes: Long = 0L,
     val status: DownloadStatus = DownloadStatus.QUEUED,
@@ -52,7 +53,7 @@ object DownloadTaskManager {
     private const val KEY_OFFLINE_ONLY = "offline_only_mode"
 
     fun isSaveInAppEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).getBoolean(KEY_SAVE_IN_APP, true)
+        context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).getBoolean(KEY_SAVE_IN_APP, false)
 
     fun setSaveInAppEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_OFFLINE, Context.MODE_PRIVATE).edit().putBoolean(KEY_SAVE_IN_APP, enabled).apply()
@@ -162,7 +163,7 @@ object DownloadTaskManager {
         return updated
     }
 
-    fun enqueueFile(context: Context, file: MediaFile, folderName: String) {
+    fun enqueueFile(context: Context, file: MediaFile, folderName: String, saveInApp: Boolean = false) {
         val appCtx = context.applicationContext
         val safeFolder = folderName.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "Downloads" }
         val taskId = file.path
@@ -179,6 +180,7 @@ object DownloadTaskManager {
             fileName = file.name,
             remotePath = file.path,
             folderName = safeFolder,
+            saveInApp = saveInApp,
             bytesDownloaded = 0L,
             totalBytes = file.size.coerceAtLeast(0L),
             status = DownloadStatus.QUEUED
@@ -188,8 +190,8 @@ object DownloadTaskManager {
         activeJobs[taskId] = scope.launch { downloadSemaphore.withPermit { if (isActive) runDownload(appCtx, initial) } }
     }
 
-    fun enqueueBatch(context: Context, files: List<MediaFile>, folderName: String) {
-        for (f in files) enqueueFile(context, f, folderName)
+    fun enqueueBatch(context: Context, files: List<MediaFile>, folderName: String, saveInApp: Boolean = false) {
+        for (f in files) enqueueFile(context, f, folderName, saveInApp)
     }
 
     fun cancelTask(context: Context, taskId: String) {
@@ -213,7 +215,7 @@ object DownloadTaskManager {
                 RcloneEngine.startForegroundServeService(context)
             }
             val streamUrl = RcloneEngine.buildStreamUrl(context, seed.remotePath)
-            val baseRoot = if (isSaveInAppEnabled(context)) getAppOfflineRoot(context) else getPublicOfflineRoot()
+            val baseRoot = if (seed.saveInApp) getAppOfflineRoot(context) else getPublicOfflineRoot()
             val targetDir = File(baseRoot, seed.folderName).apply { if (!exists()) mkdirs() }
             val outFile = File(targetDir, seed.fileName)
             val partFile = File(targetDir, "${seed.fileName}.part")

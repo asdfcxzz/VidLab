@@ -479,21 +479,7 @@ fun VidLabDrawerContent(
                         }
                         Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("Save Inside App Storage", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                        Text(if (saveInApp) "Private app storage (filesDir/offline_downloads)" else "Public Downloads/VidLab folder", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                                    }
-                                    Switch(
-                                        checked = saveInApp,
-                                        onCheckedChange = {
-                                            saveInApp = it
-                                            DownloadTaskManager.setSaveInAppEnabled(context, it)
-                                        },
-                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                                    )
-                                }
-                                HorizontalDivider(color = BorderPurple, thickness = 0.8.dp)
+
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("Offline Mode (Local Only)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)

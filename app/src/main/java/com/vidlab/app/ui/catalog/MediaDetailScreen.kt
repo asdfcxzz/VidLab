@@ -272,6 +272,16 @@ fun MediaDetailScreen(
                                     }
                                 )
                                 DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp)) },
+                                    text = { Text(if (item.isSeries) "Save All Offline in App" else "Save Offline in App", color = Color.White, fontSize = 13.sp) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        val files = if (item.isSeries && allEpisodes.isNotEmpty()) allEpisodes.map { it.file } else listOf(item.primaryFile)
+                                        DownloadTaskManager.enqueueBatch(context, files, item.title, saveInApp = true)
+                                        Toast.makeText(context, "Saving ${files.size} file(s) offline inside app", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Storage & File Info", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
