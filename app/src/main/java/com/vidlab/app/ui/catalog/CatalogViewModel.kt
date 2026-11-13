@@ -164,14 +164,21 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
 
-            val feedResult = repository.buildMediaCenterFeed()
-            if (feedResult.isFailure) {
-                val err = feedResult.exceptionOrNull()?.localizedMessage ?: "Scan failed"
-                _progressState.update { it.copy(isRunning = false, error = err) }
-                return@launch
+            val cachedSections = _feedSections.value
+            val sections = if (cachedSections.isNotEmpty()) {
+                _progressState.update {
+                    it.copy(logs = it.logs + "Using loaded catalog (${cachedSections.sumOf { s -> s.items.size }} titles)...")
+                }
+                cachedSections
+            } else {
+                val feedResult = repository.buildMediaCenterFeed()
+                if (feedResult.isFailure) {
+                    val err = feedResult.exceptionOrNull()?.localizedMessage ?: "Scan failed"
+                    _progressState.update { it.copy(isRunning = false, error = err) }
+                    return@launch
+                }
+                feedResult.getOrDefault(emptyList())
             }
-
-            val sections = feedResult.getOrDefault(emptyList())
             val allItems = sections.flatMap { it.items }
             val allOps = mutableListOf<RenameOperation>()
 
@@ -220,7 +227,6 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
 
-                kotlinx.coroutines.delay(250)
                 val moveResult = if (com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(app)) com.vidlab.app.data.remote.RcloneEngine.moveFile(app, op.oldPath, op.newPath) else activeClient.moveFile(op.oldPath, op.newPath)
                 val logEntry = if (moveResult.isSuccess) {
                     succeeded++

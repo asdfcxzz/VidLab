@@ -226,12 +226,15 @@ fun MediaCenterScreen(
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val progressStore = remember { com.vidlab.app.data.prefs.WatchProgressStore(context) }
-    val progressRev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
-    val heroItem = remember(sections, progressRev) {
-        val allItems = sections.flatMap { it.items }.distinctBy { it.id }
-        progressStore.getLastWatchedItem(allItems)
-            ?: allItems.firstOrNull { !it.backdropUrl.isNullOrBlank() }
-            ?: allItems.firstOrNull()
+    val heroItem by remember(sections) {
+        derivedStateOf {
+            @Suppress("UNUSED_VARIABLE")
+            val rev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
+            val allItems = sections.flatMap { it.items }.distinctBy { it.id }
+            progressStore.getLastWatchedItem(allItems)
+                ?: allItems.firstOrNull { !it.backdropUrl.isNullOrBlank() }
+                ?: allItems.firstOrNull()
+        }
     }
 
     val filteredSections = remember(sections, searchQuery) {
@@ -257,10 +260,11 @@ fun MediaCenterScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            if (!isSearchActive && heroItem != null) {
-                item {
+            val currentHero = heroItem
+            if (!isSearchActive && currentHero != null) {
+                item(key = "hero_${currentHero.id}") {
                     LastWatchedHero(
-                        item = heroItem,
+                        item = currentHero,
                         onWatchNow = { onSelectItem(it) }
                     )
                 }

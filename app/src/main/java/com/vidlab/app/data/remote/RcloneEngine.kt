@@ -374,6 +374,8 @@ object RcloneEngine {
                 "moveto",
                 src,
                 dst,
+                "--no-traverse",
+                "--drive-server-side-across-configs",
                 "--config", runtimeConf.absolutePath
             )
             val pb = ProcessBuilder(cmd).redirectErrorStream(true)

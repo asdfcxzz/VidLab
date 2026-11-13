@@ -811,24 +811,23 @@ private fun ModernPlayerScreen(
                         )
                     }
 
-                    Surface(
-                        color = hudPillBg,
-                        shape = RoundedCornerShape(22.dp),
-                        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color.White.copy(alpha = 0.12f)),
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        Text(
-                            text = activeTitle,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                        )
+                    Box(modifier = Modifier.weight(1f)) {
+                        Surface(
+                            color = hudPillBg,
+                            shape = RoundedCornerShape(22.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color.White.copy(alpha = 0.12f))
+                        ) {
+                            Text(
+                                text = activeTitle,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                            )
+                        }
                     }
-
-                    Spacer(modifier = Modifier.weight(1f))
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
