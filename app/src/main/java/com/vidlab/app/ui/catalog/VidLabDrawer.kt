@@ -177,13 +177,13 @@ fun VidLabDrawerContent(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceDark).border(0.8.dp, BorderPurple, RoundedCornerShape(12.dp)).padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val tabs = listOf("Source", "Recent", if (activeDownloadCount > 0) "Downloads ($activeDownloadCount)" else "Downloads", "Settings")
+                val tabs = listOf("Settings", "Source", "Recent", if (activeDownloadCount > 0) "Downloads ($activeDownloadCount)" else "Downloads")
                 tabs.forEachIndexed { index, label ->
                     val isSelected = selectedTab == index
                     Surface(
                         color = if (isSelected) AccentViolet else Color.Transparent,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(if (index == 2 && activeDownloadCount > 0) 1.35f else 1f).clickable { selectedTab = index }
+                        modifier = Modifier.weight(if (index == 3 && activeDownloadCount > 0) 1.35f else 1f).clickable { selectedTab = index }
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
                             Text(label, color = if (isSelected) Color(0xFF0A0E17) else Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -195,6 +195,208 @@ fun VidLabDrawerContent(
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 when (selectedTab) {
                     1 -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                showMediaSourceSection = !showMediaSourceSection
+                                drawerPrefs.edit().putBoolean("show_media_source_section", showMediaSourceSection).apply()
+                            }.padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("MEDIA SOURCE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Surface(color = SurfaceDark, shape = RoundedCornerShape(6.dp), border = BorderStroke(0.6.dp, BorderPurple)) {
+                                Text(if (showMediaSourceSection) "Hide" else "Show", color = AccentViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                            }
+                        }
+
+                        if (showMediaSourceSection) {
+                            Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF0A0E17)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Surface(
+                                            color = if (useRclone) AccentViolet else BorderPurple,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f).clickable { useRclone = true; RcloneEngine.setRcloneModeEnabled(context, true); RcloneEngine.restartServeIfNeeded(context) }
+                                        ) { Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) { Text("Rclone Mode", color = if (useRclone) Color(0xFF0A0E17) else Color(0xFF94A3B8), fontSize = 12.sp, fontWeight = FontWeight.Bold) } }
+                                        Surface(
+                                            color = if (!useRclone) AccentViolet else BorderPurple,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f).clickable { useRclone = false; RcloneEngine.setRcloneModeEnabled(context, false); RcloneEngine.stopServer() }
+                                        ) { Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) { Text("WebDAV Mode", color = if (!useRclone) Color(0xFF0A0E17) else Color(0xFF94A3B8), fontSize = 12.sp, fontWeight = FontWeight.Bold) } }
+                                    }
+
+                                    if (useRclone) {
+                                        Text("Embedded Rclone scans, streams & organizes your selected remotes directly.", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                            Button(
+                                                onClick = { pickConfLauncher.launch(arrayOf("*/*")) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("Import rclone.conf", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val found = listOf(File("/storage/emulated/0/Download/rclone.conf"), File("/storage/emulated/0/rclone.conf")).firstOrNull { it.exists() && it.canRead() }
+                                                    if (found != null) {
+                                                        RcloneEngine.importConfigText(context, found.readText()).onSuccess { list ->
+                                                            rcloneRemotes = list; useRclone = true
+                                                            Toast.makeText(context, "Loaded ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    } else {
+                                                        pasteConfText = if (RcloneEngine.getConfigFile(context).exists()) RcloneEngine.getConfigFile(context).readText() else ""
+                                                        showPasteConfDialog = true
+                                                    }
+                                                },
+                                                border = BorderStroke(1.dp, BorderPurple),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("Paste / Auto-Find", color = Color.White, fontSize = 11.sp) }
+                                        }
+
+                                        if (rcloneRemotes.isNotEmpty()) {
+                                            HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().clickable { showRcloneRemotes = !showRcloneRemotes; drawerPrefs.edit().putBoolean("show_rclone_remotes", showRcloneRemotes).apply() }.padding(vertical = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Remotes (${rcloneRemotes.count { it.enabled }}/${rcloneRemotes.size} active)", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                Surface(color = BorderPurple, shape = RoundedCornerShape(6.dp)) {
+                                                    Text(if (showRcloneRemotes) "Hide" else "Show", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                                                }
+                                            }
+                                            if (showRcloneRemotes) {
+                                                rcloneRemotes.forEachIndexed { idx, remote ->
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                                                            .background(if (remote.enabled) BorderPurple.copy(alpha = 0.55f) else Color.Transparent)
+                                                            .clickable {
+                                                                val updated = rcloneRemotes.toMutableList(); updated[idx] = remote.copy(enabled = !remote.enabled)
+                                                                rcloneRemotes = updated; RcloneEngine.saveConfiguredRemotes(context, updated); RcloneEngine.restartServeIfNeeded(context)
+                                                            }.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text("${remote.name}:", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                                            Text("type = ${remote.type}", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                                        }
+                                                        Checkbox(
+                                                            checked = remote.enabled,
+                                                            onCheckedChange = { checked ->
+                                                                val updated = rcloneRemotes.toMutableList(); updated[idx] = remote.copy(enabled = checked)
+                                                                rcloneRemotes = updated; RcloneEngine.saveConfiguredRemotes(context, updated); RcloneEngine.restartServeIfNeeded(context)
+                                                            },
+                                                            colors = CheckboxDefaults.colors(checkedColor = AccentViolet, checkmarkColor = Color.White, uncheckedColor = Color(0xFF94A3B8))
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        OutlinedTextField(
+                                            value = webDavUrl, onValueChange = { webDavUrl = it },
+                                            label = { Text("WebDAV Server URL", color = Color(0xFF94A3B8), fontSize = 11.sp) },
+                                            singleLine = true,
+                                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentViolet, unfocusedBorderColor = BorderPurple, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                            Button(
+                                                onClick = { RcloneEngine.setWebDavBaseUrl(context, webDavUrl); RcloneEngine.setRcloneModeEnabled(context, false); RcloneEngine.stopServer(); onRescanClick() },
+                                                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f).height(38.dp)
+                                            ) { Text("Save URL", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                            OutlinedButton(onClick = onBrowseStorageClick, border = BorderStroke(1.dp, BorderPurple), shape = RoundedCornerShape(10.dp), modifier = Modifier.height(38.dp)) { Text("Presets", color = Color.White, fontSize = 12.sp) }
+                                        }
+                                    }
+                                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        Button(
+                                            onClick = { if (useRclone) RcloneEngine.restartServeIfNeeded(context); onRescanClick() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier.weight(1f).height(40.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF0A0E17), modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text("Rescan", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = onRunRenamerClick,
+                                            border = BorderStroke(1.dp, AccentViolet),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier.weight(1f).height(40.dp)
+                                        ) {
+                                            Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(if (useRclone) "Rclone Renamer" else "WebDAV Renamer", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text("TRACKING & SYNC", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Simkl Integration", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                            if (isSignedIn) { Spacer(modifier = Modifier.width(6.dp)); Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(15.dp)) }
+                                        }
+                                        Text(if (isSignedIn) "Signed in • $simklUser" else "Sign in to sync watch history", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    }
+                                    if (isSignedIn) {
+                                        Switch(checked = scrobbleActive, onCheckedChange = { scrobbleActive = it; simklManager.scrobbleEnabled = it; onSimklToggle(it) }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet))
+                                    }
+                                }
+                                if (!isSignedIn) {
+                                    if (pinSession == null) {
+                                        Button(
+                                            onClick = {
+                                                isRequestingPin = true
+                                                scope.launch {
+                                                    val res = simklManager.requestPinCode(); isRequestingPin = false
+                                                    res.onSuccess { pinSession = it }; res.onFailure { Toast.makeText(context, "Simkl error: ${it.message ?: "Network error"}", Toast.LENGTH_LONG).show() }
+                                                }
+                                            },
+                                            enabled = !isRequestingPin, colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(38.dp)
+                                        ) { Text(if (isRequestingPin) "Generating PIN..." else "Sign in with Simkl", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                    } else {
+                                        val session = pinSession!!
+                                        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(BorderPurple).padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Enter PIN on simkl.com/pin:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(session.userCode, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Button(
+                                                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(session.verificationUrl))) } },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                                ) { Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF0A0E17)); Spacer(modifier = Modifier.width(6.dp)); Text("Open Simkl", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                                TextButton(onClick = { pinSession = null }) { Text("Cancel", color = Color(0xFF94A3B8), fontSize = 11.sp) }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text(if (scrobbleActive) "Auto-scrobble at 80% ON" else "Auto-scrobble paused", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                        Surface(color = BorderPurple.copy(alpha = 0.75f), shape = RoundedCornerShape(8.dp), modifier = Modifier.clickable { simklManager.signOut(); isSignedIn = false; pinSession = null; onSimklToggle(false) }) {
+                                            Text("Sign Out", color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    2 -> {
                         val rev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
                         val historyList = remember(sections, rev) {
                             progressStore.getWatchHistory(sections.flatMap { it.items }.distinctBy { it.id })
@@ -242,7 +444,7 @@ fun VidLabDrawerContent(
                         }
                     }
 
-                    2 -> {
+                    3 -> {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
@@ -404,7 +606,7 @@ fun VidLabDrawerContent(
                             }
                         }
                     }
-                    3 -> {
+                    0 -> {
                         Text("PLAYER SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
