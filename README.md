@@ -2,7 +2,7 @@
 
 A modern, Netflix-style Android media center and cloud streaming player built with **Jetpack Compose**, **Media3 (ExoPlayer + FFmpeg)**, and an **embedded Rclone engine**.
 
-Stream directly from encrypted Google Drive vaults, WebDAV servers, or local storage—complete with automatic poster/backdrop scraping, episode tracking, and Simkl scrobbling.
+Stream directly from encrypted Google Drive vaults and WebDAV servers—complete with automatic poster/backdrop scraping, episode tracking, and Simkl scrobbling.
 
 ---
 
