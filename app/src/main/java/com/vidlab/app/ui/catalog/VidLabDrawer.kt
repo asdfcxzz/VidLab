@@ -10,6 +10,7 @@ import com.vidlab.app.data.remote.RcloneRemoteConfig
 import java.io.File
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -55,19 +56,24 @@ fun VidLabDrawerContent(
     onRescanClick: () -> Unit,
     onRunRenamerClick: () -> Unit,
     onBrowseStorageClick: () -> Unit = {},
-    onRecentClick: () -> Unit = {}
+    onRecentClick: () -> Unit = {},
+    sections: List<com.vidlab.app.data.model.MediaFeedSection> = emptyList(),
+    onSelectHistoryItem: (com.vidlab.app.data.model.ScrapedMediaItem) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val playerPrefs = remember { PlayerPreferences(context) }
     val simklManager = remember { SimklManager(context) }
+    val progressStore = remember { com.vidlab.app.data.prefs.WatchProgressStore(context) }
     var useRclone by remember { mutableStateOf(RcloneEngine.isRcloneModeEnabled(context)) }
     var webDavUrl by remember { mutableStateOf(RcloneEngine.getWebDavBaseUrl(context)) }
     var rcloneRemotes by remember { mutableStateOf(RcloneEngine.getConfiguredRemotes(context)) }
     val drawerPrefs = remember { context.getSharedPreferences("vidlab_drawer_prefs", android.content.Context.MODE_PRIVATE) }
-    var showRcloneRemotes by remember { mutableStateOf(drawerPrefs.getBoolean("show_rclone_remotes", true)) }
+    var showMediaSourceSection by remember { mutableStateOf(drawerPrefs.getBoolean("show_media_source_section", true)) }
+    var showRcloneRemotes by remember { mutableStateOf(drawerPrefs.getBoolean("show_rclone_remotes", false)) }
     var showPasteConfDialog by remember { mutableStateOf(false) }
     var pasteConfText by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     val pickConfLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -102,932 +108,426 @@ fun VidLabDrawerContent(
     var brightGesture by remember { mutableStateOf(playerPrefs.brightnessGestureEnabled) }
     var skipEnabled by remember { mutableStateOf(playerPrefs.skipSegmentsEnabled) }
     var autoSkip by remember { mutableStateOf(playerPrefs.autoSkipSegments) }
-
     var subSize by remember { mutableFloatStateOf(playerPrefs.subtitleFontSizeSp) }
     var subColorIdx by remember { mutableIntStateOf(playerPrefs.subtitleColorIndex) }
-    var subBgBox by remember { mutableStateOf(playerPrefs.subtitleBgBox) }
     var subBottomPct by remember { mutableIntStateOf(playerPrefs.subtitleBottomPaddingPct) }
+    var subBgBox by remember { mutableStateOf(playerPrefs.subtitleBgBox) }
 
-    val speedOptions = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-    val seekOptions = listOf(5, 10, 15, 30)
-    val aspectLabels = listOf("Fit", "Zoom", "Fill")
-    val subSizeOptions = listOf(14f, 18f, 22f, 26f)
-    val subColorLabels = listOf("White", "Yellow", "Cyan", "Green")
-    val subMarginOptions = listOf(2, 4, 6, 10)
+    val downloadTasks = DownloadTaskManager.tasks
+    val activeDownloadCount = downloadTasks.count { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }
 
-    LaunchedEffect(pinSession) {
-        val activePin = pinSession ?: return@LaunchedEffect
-        val stepMs = (activePin.interval.coerceAtLeast(5)) * 1000L
-        repeat(60) {
-            delay(stepMs)
-            val verified = simklManager.pollPinStatus(activePin).getOrDefault(false)
-            if (verified) {
-                isSignedIn = true
-                simklUser = simklManager.username ?: "Simkl Member"
-                pinSession = null
-                onSimklToggle(true)
-                Toast.makeText(context, "Signed in to Simkl as $simklUser", Toast.LENGTH_SHORT).show()
-                return@LaunchedEffect
+    if (showPasteConfDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasteConfDialog = false },
+            containerColor = SurfaceDark,
+            title = { Text("Paste rclone.conf", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = pasteConfText,
+                    onValueChange = { pasteConfText = it },
+                    placeholder = { Text("[gdrive]\ntype = drive\n...", color = Color(0xFF64748B), fontSize = 12.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentViolet,
+                        unfocusedBorderColor = BorderPurple,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(180.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    RcloneEngine.importConfigText(context, pasteConfText).onSuccess { list ->
+                        rcloneRemotes = list
+                        useRclone = true
+                        showPasteConfDialog = false
+                        Toast.makeText(context, "Saved ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
+                    }.onFailure { err ->
+                        Toast.makeText(context, err.message ?: "Invalid config", Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("Save", color = AccentViolet, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasteConfDialog = false }) { Text("Cancel", color = Color(0xFF94A3B8)) }
             }
-        }
+        )
     }
 
     ModalDrawerSheet(
         drawerContainerColor = DeepPurpleBg,
         drawerContentColor = Color.White,
-        modifier = Modifier.width(320.dp)
+        modifier = Modifier.width(330.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp)
-        ) {
-            Text("VidLab", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Media Center & Storage Renamer", color = Color(0xFF94A3B8), fontSize = 12.sp)
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 18.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("VidLab", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(if (useRclone) "Rclone Engine • Media Center" else "WebDAV • Media Center", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                }
+                Surface(color = SurfaceDark, shape = RoundedCornerShape(8.dp), border = BorderStroke(0.8.dp, BorderPurple)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Box(modifier = Modifier.size(7.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF4CAF50)))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(if (useRclone) "Rclone" else "WebDAV", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceDark).border(0.8.dp, BorderPurple, RoundedCornerShape(12.dp)).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                val tabs = listOf("Source", "Recent", if (activeDownloadCount > 0) "Downloads ($activeDownloadCount)" else "Downloads", "Settings")
+                tabs.forEachIndexed { index, label ->
+                    val isSelected = selectedTab == index
+                    Surface(
+                        color = if (isSelected) AccentViolet else Color.Transparent,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(if (index == 2 && activeDownloadCount > 0) 1.35f else 1f).clickable { selectedTab = index }
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                            Text(label, color = if (isSelected) Color(0xFF0A0E17) else Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                when (selectedTab) {
+                    1 -> {
+                        val rev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
+                        val historyList = remember(sections, rev) {
+                            progressStore.getWatchHistory(sections.flatMap { it.items }.distinctBy { it.id })
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("RECENT WATCH HISTORY (${historyList.size})", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            if (historyList.isNotEmpty()) {
+                                Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { progressStore.clearHistory() })
+                            }
+                        }
+                        if (historyList.isEmpty()) {
+                            Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                Text("No watch history yet. Play any movie or episode and it will appear here.", color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.padding(14.dp))
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (entry in historyList) {
+                                    Surface(onClick = { onSelectHistoryItem(entry.item) }, color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                                        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            coil.compose.AsyncImage(
+                                                model = entry.item.posterUrl ?: entry.item.backdropUrl,
+                                                contentDescription = entry.item.title,
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier.size(width = 44.dp, height = 64.dp).clip(RoundedCornerShape(8.dp))
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(entry.item.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                val sub = buildString {
+                                                    if (entry.episodeLabel != null) append("${entry.episodeLabel} • ")
+                                                    if (entry.progress.watched) append("Watched") else append("${(entry.progress.fraction * 100).toInt()}% watched")
+                                                }
+                                                Text(sub, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                LinearProgressIndicator(
+                                                    progress = { if (entry.progress.watched) 1f else entry.progress.fraction },
+                                                    color = AccentViolet,
+                                                    trackColor = BorderPurple,
+                                                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp))
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    2 -> {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Simkl Integration", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                if (isSignedIn) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(15.dp))
-                                }
+                                Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("DOWNLOADS (${downloadTasks.size})", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             }
-                            Text(
-                                if (isSignedIn) "Signed in • $simklUser" else "Sign in to sync watch history",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 11.sp
-                            )
+                            if (downloadTasks.any { it.status == DownloadStatus.COMPLETED || it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
+                                Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { DownloadTaskManager.clearFinished() })
+                            }
                         }
-                        if (isSignedIn) {
-                            Switch(
-                                checked = scrobbleActive,
-                                onCheckedChange = {
-                                    scrobbleActive = it
-                                    simklManager.scrobbleEnabled = it
-                                    onSimklToggle(it)
-                                },
-                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                            )
-                        }
-                    }
-
-                    if (!isSignedIn) {
-                        if (pinSession == null) {
-                            Button(
-                                onClick = {
-                                    isRequestingPin = true
-                                    scope.launch {
-                                        val res = simklManager.requestPinCode()
-                                        isRequestingPin = false
-                                        res.onSuccess { pinSession = it }
-                                        res.onFailure {
-                                            Toast.makeText(context, "Simkl error: ${it.message ?: "Network error"}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                },
-                                enabled = !isRequestingPin,
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth().height(38.dp)
-                            ) {
-                                Text(
-                                    if (isRequestingPin) "Generating PIN..." else "Sign in with Simkl",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                        Text("Max 3 concurrent downloads • Saved to Downloads/VidLab", color = Color(0xFF64748B), fontSize = 10.sp)
+                        if (downloadTasks.isEmpty()) {
+                            Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                Text("No active downloads. Long-press an episode or use the 3-dot menu to download.", color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.padding(14.dp))
                             }
                         } else {
-                            val session = pinSession!!
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(BorderPurple)
-                                    .padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("Enter PIN on simkl.com/pin:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(session.userCode, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(session.verificationUrl))
-                                            runCatching { context.startActivity(intent) }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Open Simkl", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    TextButton(onClick = { pinSession = null }) {
-                                        Text("Cancel", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (task in downloadTasks) {
+                                    Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(task.fileName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text(task.folderName, color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                }
+                                                if (task.status == DownloadStatus.QUEUED || task.status == DownloadStatus.DOWNLOADING) {
+                                                    IconButton(onClick = { DownloadTaskManager.cancelTask(context, task.id) }, modifier = Modifier.size(26.dp)) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            }
+                                            LinearProgressIndicator(
+                                                progress = { task.progressFraction },
+                                                color = when (task.status) { DownloadStatus.COMPLETED -> Color(0xFF4CAF50); DownloadStatus.FAILED -> Color(0xFFEF5350); else -> AccentViolet },
+                                                trackColor = BorderPurple,
+                                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                                            )
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                val dlStr = String.format("%.1f MB", task.bytesDownloaded / (1024.0 * 1024.0))
+                                                val totStr = if (task.totalBytes > 0L) String.format(" / %.1f MB", task.totalBytes / (1024.0 * 1024.0)) else ""
+                                                Text("$dlStr$totStr", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                                val statusLabel = when (task.status) {
+                                                    DownloadStatus.QUEUED -> "Queued"
+                                                    DownloadStatus.DOWNLOADING -> "${(task.progressFraction * 100).toInt()}%"
+                                                    DownloadStatus.COMPLETED -> "Completed"
+                                                    DownloadStatus.FAILED -> "Failed"
+                                                    DownloadStatus.CANCELLED -> "Cancelled"
+                                                }
+                                                Text(statusLabel, color = when (task.status) { DownloadStatus.COMPLETED -> Color(0xFF4CAF50); DownloadStatus.FAILED -> Color(0xFFEF5350); else -> AccentViolet }, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        }
-                    } else {
-                        HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                if (scrobbleActive) "Auto-scrobble at 80% ON" else "Auto-scrobble paused",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 11.sp
-                            )
-                            Surface(
-                                color = BorderPurple.copy(alpha = 0.75f),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.clickable {
-                                    simklManager.signOut()
-                                    isSignedIn = false
-                                    pinSession = null
-                                    onSimklToggle(false)
-                                }
-                            ) {
-                                Text(
-                                    "Sign Out",
-                                    color = Color(0xFFCBD5E1),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
                             }
                         }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Text("MEDIA SOURCE MODE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Distinct 2-Mode Switcher: Built-in Rclone vs WebDAV Mode
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF0A0E17))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Surface(
-                            color = if (useRclone) AccentViolet else BorderPurple,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    useRclone = true
-                                    RcloneEngine.setRcloneModeEnabled(context, true)
-                                    RcloneEngine.restartServeIfNeeded(context)
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
-                                Text(
-                                    "Rclone Mode",
-                                    color = if (useRclone) Color(0xFF0A0E17) else Color(0xFF94A3B8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                    1 -> {
+                        val rev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
+                        val historyList = remember(sections, rev) {
+                            progressStore.getWatchHistory(sections.flatMap { it.items }.distinctBy { it.id })
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("RECENT WATCH HISTORY (${historyList.size})", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            if (historyList.isNotEmpty()) {
+                                Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { progressStore.clearHistory() })
                             }
                         }
-
-                        Surface(
-                            color = if (!useRclone) AccentViolet else BorderPurple,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    useRclone = false
-                                    RcloneEngine.setRcloneModeEnabled(context, false)
-                                    RcloneEngine.stopServer()
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
-                                Text(
-                                    "WebDAV Mode",
-                                    color = if (!useRclone) Color(0xFF0A0E17) else Color(0xFF94A3B8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-
-                    if (useRclone) {
-                        Text(
-                            "Embedded Rclone scans & streams your chosen remotes directly without Termux.",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        )
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(
-                                onClick = { pickConfLauncher.launch(arrayOf("*/*")) },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Import rclone.conf", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val candidates = listOf(
-                                        File("/storage/emulated/0/Download/rclone.conf"),
-                                        File("/storage/emulated/0/rclone.conf")
-                                    )
-                                    val found = candidates.firstOrNull { it.exists() && it.canRead() }
-                                    if (found != null) {
-                                        RcloneEngine.importConfigText(context, found.readText()).onSuccess { list ->
-                                            rcloneRemotes = list
-                                            useRclone = true
-                                            Toast.makeText(context, "Loaded ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } else {
-                                        pasteConfText = if (RcloneEngine.getConfigFile(context).exists()) RcloneEngine.getConfigFile(context).readText() else ""
-                                        showPasteConfDialog = true
-                                    }
-                                },
-                                border = BorderStroke(1.dp, BorderPurple),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Paste / Auto-Find", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        if (rcloneRemotes.isNotEmpty()) {
-                            HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showRcloneRemotes = !showRcloneRemotes
-                                        drawerPrefs.edit().putBoolean("show_rclone_remotes", showRcloneRemotes).apply()
-                                    }
-                                    .padding(vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val activeCount = rcloneRemotes.count { it.enabled }
-                                Text(
-                                    "Remotes ($activeCount/${rcloneRemotes.size} active)",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Surface(
-                                    color = BorderPurple,
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(
-                                        if (showRcloneRemotes) "Hide" else "Show",
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                            if (showRcloneRemotes) {
-                            rcloneRemotes.forEachIndexed { idx, remote ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (remote.enabled) BorderPurple.copy(alpha = 0.55f) else Color.Transparent)
-                                        .clickable {
-                                            val updated = rcloneRemotes.toMutableList()
-                                            updated[idx] = remote.copy(enabled = !remote.enabled)
-                                            rcloneRemotes = updated
-                                            RcloneEngine.saveConfiguredRemotes(context, updated)
-                                            RcloneEngine.restartServeIfNeeded(context)
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("${remote.name}:", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("type = ${remote.type}", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                                    }
-                                    Checkbox(
-                                        checked = remote.enabled,
-                                        onCheckedChange = { checked ->
-                                            val updated = rcloneRemotes.toMutableList()
-                                            updated[idx] = remote.copy(enabled = checked)
-                                            rcloneRemotes = updated
-                                            RcloneEngine.saveConfiguredRemotes(context, updated)
-                                            RcloneEngine.restartServeIfNeeded(context)
-                                        },
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = AccentViolet,
-                                            checkmarkColor = Color.White,
-                                            uncheckedColor = Color(0xFF94A3B8)
-                                        )
-                                    )
-                                }
-                            }
+                        if (historyList.isEmpty()) {
+                            Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                Text("No watch history yet. Play any movie or episode and it will appear here.", color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.padding(14.dp))
                             }
                         } else {
-                            Text(
-                                "No rclone.conf imported yet. Import or paste your config above.",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 11.sp
-                            )
-                        }
-                    } else {
-                        Text(
-                            "Connect to an external WebDAV server (e.g., Termux rclone serve webdav or OpenList).",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        )
-                        OutlinedTextField(
-                            value = webDavUrl,
-                            onValueChange = {
-                                webDavUrl = it
-                                RcloneEngine.setWebDavBaseUrl(context, it)
-                            },
-                            singleLine = true,
-                            label = { Text("WebDAV Server URL", color = Color(0xFF94A3B8), fontSize = 11.sp) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = AccentViolet,
-                                unfocusedBorderColor = BorderPurple
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    Button(
-                        onClick = onRescanClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().height(40.dp)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            if (useRclone) "Scan Selected Rclone Remotes" else "Scan WebDAV Server",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            if (showPasteConfDialog) {
-                AlertDialog(
-                    onDismissRequest = { showPasteConfDialog = false },
-                    containerColor = SurfaceDark,
-                    title = { Text("Paste rclone.conf", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                    text = {
-                        OutlinedTextField(
-                            value = pasteConfText,
-                            onValueChange = { pasteConfText = it },
-                            placeholder = { Text("[vault]\\ntype = combine\\n...", color = Color(0xFF94A3B8), fontSize = 12.sp) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = AccentViolet,
-                                unfocusedBorderColor = BorderPurple
-                            ),
-                            modifier = Modifier.fillMaxWidth().height(200.dp)
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            RcloneEngine.importConfigText(context, pasteConfText).onSuccess { list ->
-                                rcloneRemotes = list
-                                useRclone = true
-                                showPasteConfDialog = false
-                                Toast.makeText(context, "Saved ${list.size} remote(s)", Toast.LENGTH_SHORT).show()
-                            }.onFailure { err ->
-                                Toast.makeText(context, err.message ?: "Invalid config", Toast.LENGTH_LONG).show()
-                            }
-                        }) {
-                            Text("Save", color = AccentViolet, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showPasteConfDialog = false }) {
-                            Text("Cancel", color = Color(0xFF94A3B8))
-                        }
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Text("LIBRARY & ORGANIZATION", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            DrawerActionButton(
-                icon = Icons.Default.PlayArrow,
-                title = "Recent",
-                subtitle = "Watch history & continue watching",
-                onClick = onRecentClick
-            )
-            DrawerActionButton(
-                icon = Icons.Default.Refresh,
-                title = "Rescan Library Catalog",
-                subtitle = "Scan chosen rclone remotes & update metadata",
-                onClick = onRescanClick
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            DrawerActionButton(
-                icon = Icons.Default.DriveFileRenameOutline,
-                title = "Run Storage Auto-Renamer",
-                subtitle = "Organize files into 3-tier folders",
-                onClick = onRunRenamerClick
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text("PLAYER SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column {
-                        Text("Default Playback Speed", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            speedOptions.forEach { spd ->
-                                val selected = defaultSpeed == spd
-                                Surface(
-                                    color = if (selected) AccentViolet else BorderPurple,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        defaultSpeed = spd
-                                        playerPrefs.defaultSpeed = spd
-                                    }
-                                ) {
-                                    Text("${spd}x", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    Column {
-                        Text("Double-Tap Seek Step", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            seekOptions.forEach { sec ->
-                                val selected = seekStep == sec
-                                Surface(
-                                    color = if (selected) AccentViolet else BorderPurple,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        seekStep = sec
-                                        playerPrefs.seekStepSeconds = sec
-                                    }
-                                ) {
-                                    Text("${sec}s", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    Column {
-                        Text("Default Aspect Ratio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            aspectLabels.forEachIndexed { idx, label ->
-                                val selected = resizeMode == idx
-                                Surface(
-                                    color = if (selected) AccentViolet else BorderPurple,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        resizeMode = idx
-                                        playerPrefs.defaultResizeMode = idx
-                                    }
-                                ) {
-                                    Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto English Audio & Subs", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Prefer EN tracks automatically", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = autoEnglish,
-                            onCheckedChange = {
-                                autoEnglish = it
-                                playerPrefs.autoEnglishTracks = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Prioritize FFmpeg Decoder", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Force software decoding for EAC3/DTS", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = preferFfmpeg,
-                            onCheckedChange = {
-                                preferFfmpeg = it
-                                playerPrefs.preferFfmpegAudio = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Volume Swipe Gesture", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Swipe vertically on right side for volume", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = volGesture,
-                            onCheckedChange = {
-                                volGesture = it
-                                playerPrefs.volumeGestureEnabled = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Brightness Swipe Gesture", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Swipe vertically on left side for brightness", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = brightGesture,
-                            onCheckedChange = {
-                                brightGesture = it
-                                playerPrefs.brightnessGestureEnabled = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text("SUBTITLE SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column {
-                        Text("Subtitle Text Size", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            subSizeOptions.forEach { sz ->
-                                val selected = subSize == sz
-                                Surface(
-                                    color = if (selected) AccentViolet else BorderPurple,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        subSize = sz
-                                        playerPrefs.subtitleFontSizeSp = sz
-                                    }
-                                ) {
-                                    Text("${sz.toInt()}sp", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    Column {
-                        Text("Subtitle Color", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            subColorLabels.forEachIndexed { idx, label ->
-                                val selected = subColorIdx == idx
-                                Surface(
-                                    color = if (selected) AccentViolet else BorderPurple,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        subColorIdx = idx
-                                        playerPrefs.subtitleColorIndex = idx
-                                    }
-                                ) {
-                                    Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    Column {
-                        Text("Bottom Margin", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            subMarginOptions.forEach { pct ->
-                                val selected = subBottomPct == pct
-                                Surface(
-                                    color = if (selected) AccentViolet else BorderPurple,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        subBottomPct = pct
-                                        playerPrefs.subtitleBottomPaddingPct = pct
-                                    }
-                                ) {
-                                    Text("${pct}%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Dark Background Box", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Improve readability on bright scenes", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = subBgBox,
-                            onCheckedChange = {
-                                subBgBox = it
-                                playerPrefs.subtitleBgBox = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text("SKIP INTRO & OUTRO", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Show Skip Intro/Outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Fetch segments & show skip button", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = skipEnabled,
-                            onCheckedChange = {
-                                skipEnabled = it
-                                playerPrefs.skipSegmentsEnabled = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-
-                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto-Skip Intro & Outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("Jump past segments automatically", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = autoSkip,
-                            enabled = skipEnabled,
-                            onCheckedChange = {
-                                autoSkip = it
-                                playerPrefs.autoSkipSegments = it
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            OutlinedButton(
-                onClick = {
-                    playerPrefs.resetToDefaults()
-                    defaultSpeed = playerPrefs.defaultSpeed
-                    seekStep = playerPrefs.seekStepSeconds
-                    resizeMode = playerPrefs.defaultResizeMode
-                    autoEnglish = playerPrefs.autoEnglishTracks
-                    preferFfmpeg = playerPrefs.preferFfmpegAudio
-                    volGesture = playerPrefs.volumeGestureEnabled
-                    brightGesture = playerPrefs.brightnessGestureEnabled
-                    skipEnabled = playerPrefs.skipSegmentsEnabled
-                    autoSkip = playerPrefs.autoSkipSegments
-                    subSize = playerPrefs.subtitleFontSizeSp
-                    subColorIdx = playerPrefs.subtitleColorIndex
-                    subBgBox = playerPrefs.subtitleBgBox
-                    subBottomPct = playerPrefs.subtitleBottomPaddingPct
-                    Toast.makeText(context, "All player & subtitle settings reset to default", Toast.LENGTH_SHORT).show()
-                },
-                border = BorderStroke(1.dp, BorderPurple),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(44.dp)
-            ) {
-                Icon(Icons.Default.RestartAlt, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Reset Settings to Default", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(14.dp))
-
-            val downloadTasks = DownloadTaskManager.tasks
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("TASK PROGRESS (${downloadTasks.size})", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                if (downloadTasks.any { it.status == DownloadStatus.COMPLETED || it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
-                    Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { DownloadTaskManager.clearFinished() })
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (downloadTasks.isEmpty()) {
-                Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "No active downloads. Long-press an episode or use the 3-dot menu to download.",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (task in downloadTasks) {
-                        Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(task.fileName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(task.folderName, color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    if (task.status == DownloadStatus.QUEUED || task.status == DownloadStatus.DOWNLOADING) {
-                                        IconButton(onClick = { DownloadTaskManager.cancelTask(context, task.id) }, modifier = Modifier.size(26.dp)) {
-                                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (entry in historyList) {
+                                    Surface(onClick = { onSelectHistoryItem(entry.item) }, color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                                        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            coil.compose.AsyncImage(
+                                                model = entry.item.posterUrl ?: entry.item.backdropUrl,
+                                                contentDescription = entry.item.title,
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier.size(width = 44.dp, height = 64.dp).clip(RoundedCornerShape(8.dp))
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(entry.item.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                val sub = buildString {
+                                                    if (entry.episodeLabel != null) append("${entry.episodeLabel} • ")
+                                                    if (entry.progress.watched) append("Watched") else append("${(entry.progress.fraction * 100).toInt()}% watched")
+                                                }
+                                                Text(sub, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                LinearProgressIndicator(
+                                                    progress = { if (entry.progress.watched) 1f else entry.progress.fraction },
+                                                    color = AccentViolet,
+                                                    trackColor = BorderPurple,
+                                                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp))
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                                LinearProgressIndicator(
-                                    progress = { task.progressFraction },
-                                    color = when (task.status) {
-                                        DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
-                                        DownloadStatus.FAILED -> Color(0xFFEF5350)
-                                        else -> AccentViolet
-                                    },
-                                    trackColor = BorderPurple,
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
-                                )
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    val dlStr = String.format("%.1f MB", task.bytesDownloaded / (1024.0 * 1024.0))
-                                    val totStr = if (task.totalBytes > 0L) String.format(" / %.1f MB", task.totalBytes / (1024.0 * 1024.0)) else ""
-                                    Text("$dlStr$totStr", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                                    val statusLabel = when (task.status) {
-                                        DownloadStatus.QUEUED -> "Queued"
-                                        DownloadStatus.DOWNLOADING -> "${(task.progressFraction * 100).toInt()}%"
-                                        DownloadStatus.COMPLETED -> "Completed"
-                                        DownloadStatus.FAILED -> "Failed"
-                                        DownloadStatus.CANCELLED -> "Cancelled"
+                            }
+                        }
+                    }
+
+                    2 -> {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("DOWNLOADS (${downloadTasks.size})", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            }
+                            if (downloadTasks.any { it.status == DownloadStatus.COMPLETED || it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
+                                Text("Clear", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { DownloadTaskManager.clearFinished() })
+                            }
+                        }
+                        Text("Max 3 concurrent downloads • Saved to Downloads/VidLab", color = Color(0xFF64748B), fontSize = 10.sp)
+                        if (downloadTasks.isEmpty()) {
+                            Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                Text("No active downloads. Long-press an episode or use the 3-dot menu to download.", color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.padding(14.dp))
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (task in downloadTasks) {
+                                    Surface(color = SurfaceDark, shape = RoundedCornerShape(12.dp), border = BorderStroke(0.8.dp, BorderPurple), modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(task.fileName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text(task.folderName, color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                }
+                                                if (task.status == DownloadStatus.QUEUED || task.status == DownloadStatus.DOWNLOADING) {
+                                                    IconButton(onClick = { DownloadTaskManager.cancelTask(context, task.id) }, modifier = Modifier.size(26.dp)) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            }
+                                            LinearProgressIndicator(
+                                                progress = { task.progressFraction },
+                                                color = when (task.status) { DownloadStatus.COMPLETED -> Color(0xFF4CAF50); DownloadStatus.FAILED -> Color(0xFFEF5350); else -> AccentViolet },
+                                                trackColor = BorderPurple,
+                                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                                            )
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                val dlStr = String.format("%.1f MB", task.bytesDownloaded / (1024.0 * 1024.0))
+                                                val totStr = if (task.totalBytes > 0L) String.format(" / %.1f MB", task.totalBytes / (1024.0 * 1024.0)) else ""
+                                                Text("$dlStr$totStr", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                                val statusLabel = when (task.status) {
+                                                    DownloadStatus.QUEUED -> "Queued"
+                                                    DownloadStatus.DOWNLOADING -> "${(task.progressFraction * 100).toInt()}%"
+                                                    DownloadStatus.COMPLETED -> "Completed"
+                                                    DownloadStatus.FAILED -> "Failed"
+                                                    DownloadStatus.CANCELLED -> "Cancelled"
+                                                }
+                                                Text(statusLabel, color = when (task.status) { DownloadStatus.COMPLETED -> Color(0xFF4CAF50); DownloadStatus.FAILED -> Color(0xFFEF5350); else -> AccentViolet }, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
-                                    Text(
-                                        text = statusLabel,
-                                        color = when (task.status) {
-                                            DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
-                                            DownloadStatus.FAILED -> Color(0xFFEF5350)
-                                            else -> AccentViolet
-                                        },
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
                                 }
                             }
                         }
                     }
-                }
-            }
+                    3 -> {
+                        Text("PLAYER SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Default Playback Speed", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { spd ->
+                                        val selected = kotlin.math.abs(defaultSpeed - spd) < 0.01f
+                                        Surface(color = if (selected) AccentViolet else BorderPurple, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f).clickable { defaultSpeed = spd; playerPrefs.defaultSpeed = spd }) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                                Text("${spd}x", color = if (selected) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("Double-Tap Seek Step", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    listOf(5, 10, 15, 30).forEach { sec ->
+                                        val selected = seekStep == sec
+                                        Surface(color = if (selected) AccentViolet else BorderPurple, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f).clickable { seekStep = sec; playerPrefs.seekStepSeconds = sec }) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                                Text("${sec}s", color = if (selected) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("Default Aspect Ratio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    listOf(0 to "Fit", 4 to "Zoom", 3 to "Fill").forEach { (mode, label) ->
+                                        val selected = resizeMode == mode
+                                        Surface(color = if (selected) AccentViolet else BorderPurple, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f).clickable { resizeMode = mode; playerPrefs.defaultResizeMode = mode }) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                                Text(label, color = if (selected) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                DrawerToggleRow("Auto English Audio & Subs", "Prefer EN tracks automatically", autoEnglish) { autoEnglish = it; playerPrefs.autoEnglishTracks = it }
+                                DrawerToggleRow("Prioritize FFmpeg Decoder", "Force software decoding for EAC3/DTS", preferFfmpeg) { preferFfmpeg = it; playerPrefs.preferFfmpegAudio = it }
+                                DrawerToggleRow("Volume Swipe Gesture", "Swipe vertically on right side", volGesture) { volGesture = it; playerPrefs.volumeGestureEnabled = it }
+                                DrawerToggleRow("Brightness Swipe Gesture", "Swipe vertically on left side", brightGesture) { brightGesture = it; playerPrefs.brightnessGestureEnabled = it }
+                            }
+                        }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Engine v2.5 • Embedded Rclone", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF4CAF50)))
+                        Text("SUBTITLE & SKIP SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Subtitle Text Size", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    listOf(14f, 18f, 22f, 26f).forEach { sz ->
+                                        val selected = kotlin.math.abs(subSize - sz) < 0.5f
+                                        Surface(color = if (selected) AccentViolet else BorderPurple, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f).clickable { subSize = sz; playerPrefs.subtitleFontSizeSp = sz }) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                                Text("${sz.toInt()}sp", color = if (selected) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("Subtitle Color", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    listOf("White", "Yellow", "Cyan", "Green").forEachIndexed { idx, label ->
+                                        val selected = subColorIdx == idx
+                                        Surface(color = if (selected) AccentViolet else BorderPurple, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f).clickable { subColorIdx = idx; playerPrefs.subtitleColorIndex = idx }) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                                Text(label, color = if (selected) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("Bottom Margin", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    listOf(2, 5, 8, 12).forEach { pct ->
+                                        val selected = subBottomPct == pct
+                                        Surface(color = if (selected) AccentViolet else BorderPurple, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f).clickable { subBottomPct = pct; playerPrefs.subtitleBottomPaddingPct = pct }) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                                Text("$pct%", color = if (selected) Color(0xFF0A0E17) else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                DrawerToggleRow("Dark Background Box", "Improve readability on bright scenes", subBgBox) { subBgBox = it; playerPrefs.subtitleBgBox = it }
+                                DrawerToggleRow("Show Skip Intro/Outro", "Fetch segments & show skip button", skipEnabled) { skipEnabled = it; playerPrefs.skipSegmentsEnabled = it }
+                                DrawerToggleRow("Auto-Skip Intro & Outro", "Jump past segments automatically", autoSkip) { autoSkip = it; playerPrefs.autoSkipSegments = it }
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                defaultSpeed = 1.0f; playerPrefs.defaultSpeed = 1.0f
+                                seekStep = 10; playerPrefs.seekStepSeconds = 10
+                                resizeMode = 0; playerPrefs.defaultResizeMode = 0
+                                autoEnglish = true; playerPrefs.autoEnglishTracks = true
+                                preferFfmpeg = false; playerPrefs.preferFfmpegAudio = false
+                                volGesture = true; playerPrefs.volumeGestureEnabled = true
+                                brightGesture = true; playerPrefs.brightnessGestureEnabled = true
+                                subSize = 22f; playerPrefs.subtitleFontSizeSp = 22f
+                                subColorIdx = 0; playerPrefs.subtitleColorIndex = 0
+                                subBottomPct = 5; playerPrefs.subtitleBottomPaddingPct = 5
+                                subBgBox = false; playerPrefs.subtitleBgBox = false
+                                skipEnabled = true; playerPrefs.skipSegmentsEnabled = true
+                                autoSkip = false; playerPrefs.autoSkipSegments = false
+                                Toast.makeText(context, "Settings reset to default", Toast.LENGTH_SHORT).show()
+                            },
+                            border = BorderStroke(1.dp, BorderPurple),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Reset Settings to Default", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             }
         }
     }
 }
-
 @Composable
-private fun DrawerActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        color = SurfaceDark,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(BorderPurple),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(text = title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = subtitle, color = Color(0xFF94A3B8), fontSize = 11.sp)
-            }
+private fun DrawerToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = Color(0xFF94A3B8), fontSize = 10.sp)
         }
+        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet))
     }
 }

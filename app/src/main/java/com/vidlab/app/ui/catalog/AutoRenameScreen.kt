@@ -58,8 +58,10 @@ fun AutoRenameScreen(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val isRclone = com.vidlab.app.data.remote.RcloneEngine.isRcloneModeEnabled(ctx)
                 Text(
-                    text = "WebDAV Server-Side Reorganization",
+                    text = if (isRclone) "Rclone Server-Side Reorganization" else "WebDAV Server-Side Reorganization",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )

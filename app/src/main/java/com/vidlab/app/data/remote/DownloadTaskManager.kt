@@ -18,6 +18,8 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 enum class DownloadStatus {
     QUEUED, DOWNLOADING, COMPLETED, FAILED, CANCELLED
@@ -43,7 +45,9 @@ object DownloadTaskManager {
 
     val tasks = mutableStateListOf<DownloadTaskItem>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private const val MAX_CONCURRENT_DOWNLOADS = 3
     private val activeJobs = ConcurrentHashMap<String, Job>()
+    private val downloadSemaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -133,7 +137,7 @@ object DownloadTaskManager {
         )
         tasks.add(0, initial)
         postNotification(appCtx, initial)
-        activeJobs[taskId] = scope.launch { runDownload(appCtx, initial) }
+        activeJobs[taskId] = scope.launch { downloadSemaphore.withPermit { if (isActive) runDownload(appCtx, initial) } }
     }
 
     fun enqueueBatch(context: Context, files: List<MediaFile>, folderName: String) {

@@ -129,6 +129,11 @@ class MainActivity : ComponentActivity() {
                         onRecentClick = {
                             coroutineScope.launch { drawerState.close() }
                             showRecentHistoryModal = true
+                        },
+                        sections = sections,
+                        onSelectHistoryItem = { item ->
+                            coroutineScope.launch { drawerState.close() }
+                            selectedItem = item
                         }
                     )
                 }

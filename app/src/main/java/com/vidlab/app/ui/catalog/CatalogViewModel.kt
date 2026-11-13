@@ -59,15 +59,18 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
             if (cached.isNotEmpty() && _feedSections.value.isEmpty()) {
                 _feedSections.value = cached
             }
+            val hadInitialCache = _feedSections.value.isNotEmpty()
             _isFeedLoading.value = true
             _feedError.value = null
             val result = repository.buildMediaCenterFeed { partialSections ->
-                if (partialSections.isNotEmpty()) {
+                if (!hadInitialCache && partialSections.isNotEmpty()) {
                     _feedSections.value = partialSections
                 }
             }
             result.onSuccess { sections ->
-                _feedSections.value = sections
+                if (sections != _feedSections.value) {
+                    _feedSections.value = sections
+                }
                 _isFeedLoading.value = false
             }.onFailure { err ->
                 _feedError.value = err.localizedMessage
