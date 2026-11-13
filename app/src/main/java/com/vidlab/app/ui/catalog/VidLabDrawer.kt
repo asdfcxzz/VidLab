@@ -195,21 +195,7 @@ fun VidLabDrawerContent(
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 when (selectedTab) {
                     1 -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                showMediaSourceSection = !showMediaSourceSection
-                                drawerPrefs.edit().putBoolean("show_media_source_section", showMediaSourceSection).apply()
-                            }.padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("MEDIA SOURCE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Surface(color = SurfaceDark, shape = RoundedCornerShape(6.dp), border = BorderStroke(0.6.dp, BorderPurple)) {
-                                Text(if (showMediaSourceSection) "Hide" else "Show", color = AccentViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
-                            }
-                        }
-
-                        if (showMediaSourceSection) {
+                        Text("MEDIA SOURCE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF0A0E17)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -339,62 +325,6 @@ fun VidLabDrawerContent(
                                 }
                             }
                         }
-
-                        Text("TRACKING & SYNC", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Simkl Integration", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                            if (isSignedIn) { Spacer(modifier = Modifier.width(6.dp)); Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(15.dp)) }
-                                        }
-                                        Text(if (isSignedIn) "Signed in • $simklUser" else "Sign in to sync watch history", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                    }
-                                    if (isSignedIn) {
-                                        Switch(checked = scrobbleActive, onCheckedChange = { scrobbleActive = it; simklManager.scrobbleEnabled = it; onSimklToggle(it) }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet))
-                                    }
-                                }
-                                if (!isSignedIn) {
-                                    if (pinSession == null) {
-                                        Button(
-                                            onClick = {
-                                                isRequestingPin = true
-                                                scope.launch {
-                                                    val res = simklManager.requestPinCode(); isRequestingPin = false
-                                                    res.onSuccess { pinSession = it }; res.onFailure { Toast.makeText(context, "Simkl error: ${it.message ?: "Network error"}", Toast.LENGTH_LONG).show() }
-                                                }
-                                            },
-                                            enabled = !isRequestingPin, colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(38.dp)
-                                        ) { Text(if (isRequestingPin) "Generating PIN..." else "Sign in with Simkl", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                                    } else {
-                                        val session = pinSession!!
-                                        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(BorderPurple).padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("Enter PIN on simkl.com/pin:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(session.userCode, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Button(
-                                                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(session.verificationUrl))) } },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                                ) { Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF0A0E17)); Spacer(modifier = Modifier.width(6.dp)); Text("Open Simkl", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                                                TextButton(onClick = { pinSession = null }) { Text("Cancel", color = Color(0xFF94A3B8), fontSize = 11.sp) }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                        Text(if (scrobbleActive) "Auto-scrobble at 80% ON" else "Auto-scrobble paused", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                        Surface(color = BorderPurple.copy(alpha = 0.75f), shape = RoundedCornerShape(8.dp), modifier = Modifier.clickable { simklManager.signOut(); isSignedIn = false; pinSession = null; onSimklToggle(false) }) {
-                                            Text("Sign Out", color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
 
                     2 -> {
                         val rev = com.vidlab.app.data.prefs.WatchProgressStore.revision.intValue
@@ -607,6 +537,61 @@ fun VidLabDrawerContent(
                         }
                     }
                     0 -> {
+                        Text("TRACKING & SYNC", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Simkl Integration", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                            if (isSignedIn) { Spacer(modifier = Modifier.width(6.dp)); Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(15.dp)) }
+                                        }
+                                        Text(if (isSignedIn) "Signed in • $simklUser" else "Sign in to sync watch history", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    }
+                                    if (isSignedIn) {
+                                        Switch(checked = scrobbleActive, onCheckedChange = { scrobbleActive = it; simklManager.scrobbleEnabled = it; onSimklToggle(it) }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AccentViolet))
+                                    }
+                                }
+                                if (!isSignedIn) {
+                                    if (pinSession == null) {
+                                        Button(
+                                            onClick = {
+                                                isRequestingPin = true
+                                                scope.launch {
+                                                    val res = simklManager.requestPinCode(); isRequestingPin = false
+                                                    res.onSuccess { pinSession = it }; res.onFailure { Toast.makeText(context, "Simkl error: ${it.message ?: "Network error"}", Toast.LENGTH_LONG).show() }
+                                                }
+                                            },
+                                            enabled = !isRequestingPin, colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(38.dp)
+                                        ) { Text(if (isRequestingPin) "Generating PIN..." else "Sign in with Simkl", color = Color(0xFF0A0E17), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                    } else {
+                                        val session = pinSession!!
+                                        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(BorderPurple).padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Enter PIN on simkl.com/pin:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(session.userCode, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Button(
+                                                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(session.verificationUrl))) } },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                                ) { Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF0A0E17)); Spacer(modifier = Modifier.width(6.dp)); Text("Open Simkl", color = Color(0xFF0A0E17), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                                TextButton(onClick = { pinSession = null }) { Text("Cancel", color = Color(0xFF94A3B8), fontSize = 11.sp) }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    HorizontalDivider(color = BorderPurple, thickness = 1.dp)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text(if (scrobbleActive) "Auto-scrobble at 80% ON" else "Auto-scrobble paused", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                        Surface(color = BorderPurple.copy(alpha = 0.75f), shape = RoundedCornerShape(8.dp), modifier = Modifier.clickable { simklManager.signOut(); isSignedIn = false; pinSession = null; onSimklToggle(false) }) {
+                                            Text("Sign Out", color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Text("PLAYER SETTINGS", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
