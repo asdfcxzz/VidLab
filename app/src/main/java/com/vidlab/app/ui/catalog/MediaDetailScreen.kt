@@ -886,6 +886,15 @@ private fun EpisodeCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "S${seasonNumber}E${episodeNumber} • $fileSize", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                    if (remember(ep.file.path, DownloadTaskManager.tasks.size) { DownloadTaskManager.findDownloadedFile(context, ep.file.path) != null }) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.DownloadDone,
+                            contentDescription = "Saved Offline",
+                            tint = AccentViolet,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                     if (progress?.watched == true) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(text = "• Watched", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)

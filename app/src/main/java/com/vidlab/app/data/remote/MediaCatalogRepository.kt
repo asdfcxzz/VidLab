@@ -491,8 +491,18 @@ class MediaCatalogRepository(
                         "/SHOWS"
                     }
 
-                    var epTitleClean = sanitizeFsName(ep.title.substringAfter("•").trim())
+                    val rawEpTitle = ep.title.substringAfter("•").trim()
+                    var epTitleClean = sanitizeFsName(rawEpTitle)
                     epTitleClean = epTitleClean.replace(Regex("[=+\\[\\]]"), "").replace(Regex("(?i)(tv|movie)\\d{4}"), "").trim()
+
+                    val isUnverifiedEpisodeTitle = epTitleClean.isBlank() ||
+                        epTitleClean.matches(Regex("(?i)^episode\\s*\\d+$")) ||
+                        epTitleClean.matches(Regex("(?i)^s\\d+e\\d+$")) ||
+                        rawEpTitle.contains("..") ||
+                        Regex("(?i)\\b(1080p|720p|480p|2160p|web-?dl|webrip|bluray|bdrip|ddp\\d|aac|h\\.?264|h\\.?265|x264|x265|hevc)\\b").containsMatchIn(rawEpTitle)
+                    if (isUnverifiedEpisodeTitle && !isManualOverride) {
+                        continue
+                    }
 
                     val newFileName = if (epTitleClean.startsWith("Episode ", ignoreCase = true) || epTitleClean.isBlank()) {
                         String.format("%s - S%02dE%02d.mkv", cleanTitle, season.seasonNumber, ep.episodeNumber)
