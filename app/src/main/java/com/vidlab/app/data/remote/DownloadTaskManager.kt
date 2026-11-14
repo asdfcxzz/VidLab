@@ -137,7 +137,7 @@ object DownloadTaskManager {
             }
             DownloadStatus.COMPLETED -> {
                 builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
-                    .setContentText("Saved to Downloads/VidLab/${task.folderName}")
+                    .setContentText(if (task.saveInApp) "Saved offline in app • ${task.folderName}" else "Saved to Downloads/VidLab/${task.folderName}")
                     .setProgress(0, 0, false)
                     .setOngoing(false)
             }

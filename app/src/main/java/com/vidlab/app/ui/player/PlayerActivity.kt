@@ -763,7 +763,7 @@ private fun ModernPlayerScreen(
             }
         }
 
-        if (!controlsVisible && !isLocked && activeSkipSegment != null) {
+        if ((!controlsVisible || isLocked) && activeSkipSegment != null) {
             Surface(
                 onClick = {
                     player.seekTo(activeSkipSegment.endMs)
@@ -981,6 +981,35 @@ private fun ModernPlayerScreen(
                                 Text(
                                     text = "${playbackSpeed}x",
                                     color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        val decoderLabels = listOf("Auto", "HW", "SW")
+                        val currentDecoderIdx = playerPrefs.decoderMode.coerceIn(0, 2)
+                        Surface(
+                            onClick = {
+                                val nextMode = (currentDecoderIdx + 1) % 3
+                                if (activeFilePath.isNotBlank() && duration > 0L) {
+                                    WatchProgressStore(context).saveProgress(activeFilePath, player.currentPosition, duration)
+                                }
+                                playerPrefs.decoderMode = nextMode
+                                android.widget.Toast.makeText(context, "Decoder: ${decoderLabels[nextMode]}", android.widget.Toast.LENGTH_SHORT).show()
+                                activity?.recreate()
+                            },
+                            color = hudCircleBg,
+                            shape = CircleShape,
+                            modifier = Modifier.height(42.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            ) {
+                                Text(
+                                    text = decoderLabels[currentDecoderIdx],
+                                    color = Color(0xFF8B85CF),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
