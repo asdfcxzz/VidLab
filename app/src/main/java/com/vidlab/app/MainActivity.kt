@@ -299,10 +299,9 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                    // Ambiguous home-screen popup disabled by user preference,
-                            onDismiss = { activeAmbiguousPrompt = null }
-                        )
-                    }
+
+                    // Ambiguous Confirmation Prompt
+                    // Ambiguous home-screen popup disabled
                 }
             }
         }
