@@ -299,22 +299,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-
-                    // Ambiguous Confirmation Prompt
-                    if (activeAmbiguousPrompt != null) {
-                        AmbiguousMatchDialog(
-                            prompt = activeAmbiguousPrompt!!,
-                            onSelectMatch = { cand ->
-                                viewModel.applyCandidateSelection(
-                                    ScrapedMediaItem(
-                                        id = activeAmbiguousPrompt!!.mediaKey,
-                                        title = cand.title,
-                                        primaryFile = MediaFile("", "", false)
-                                    ),
-                                    cand
-                                )
-                                activeAmbiguousPrompt = null
-                            },
+                    // Ambiguous home-screen popup disabled by user preference,
                             onDismiss = { activeAmbiguousPrompt = null }
                         )
                     }

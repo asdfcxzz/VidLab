@@ -464,6 +464,7 @@ class MediaCatalogRepository(
         isManualOverride: Boolean = false
     ): List<RenameOperation> {
         val plan = mutableListOf<RenameOperation>()
+        val plannedTargets = mutableSetOf<String>()
         if (item.metadata == null && !isManualOverride) return emptyList()
 
 
@@ -482,7 +483,9 @@ class MediaCatalogRepository(
                 for (ep in season.episodes) {
                     val oldPath = ep.file.path
 
-                    val rootSection = if (oldPath.contains("/ANIME", ignoreCase = true)) {
+                    val isAnimeItem = oldPath.contains("/ANIME", ignoreCase = true) ||
+                        item.metadata?.genres?.any { it.contains("animation", ignoreCase = true) } == true
+                    val rootSection = if (isAnimeItem) {
                         "/ANIME"
                     } else {
                         "/SHOWS"
@@ -500,7 +503,7 @@ class MediaCatalogRepository(
                     // Strict 3-tier path: /CATEGORY/{Title}/{Title Season X}/{Title - SxxExx - EpName.mkv}
                     val newFullPath = "$rootSection/$cleanTitle/$seasonFolderName/$newFileName"
 
-                    if (oldPath != newFullPath) {
+                    if (oldPath != newFullPath && plannedTargets.add(newFullPath.lowercase())) {
                         plan.add(RenameOperation(oldPath, newFullPath, ep.file.name, newFileName))
                     }
                 }

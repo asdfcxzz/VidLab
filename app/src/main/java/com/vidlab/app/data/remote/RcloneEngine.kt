@@ -380,7 +380,7 @@ object RcloneEngine {
             val dst = toRemoteSpec(newLogicalPath)
             val cmd = listOf(
                 bin.absolutePath,
-                "moveto",
+                "moveto", "--ignore-existing",
                 src,
                 dst,
                 "--no-traverse",
