@@ -39,6 +39,8 @@ import com.vidlab.app.data.remote.SimklManager
 import com.vidlab.app.data.remote.SimklPinSession
 import com.vidlab.app.data.remote.DownloadTaskManager
 import com.vidlab.app.data.remote.DownloadStatus
+import com.vidlab.app.data.remote.AppUpdater
+import com.vidlab.app.data.remote.AppReleaseInfo
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import kotlinx.coroutines.delay
@@ -79,6 +81,12 @@ fun VidLabDrawerContent(
     var showPasteConfDialog by remember { mutableStateOf(false) }
     var pasteConfText by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
+    val installedVersion = remember { AppUpdater.getCurrentVersionName(context) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var updateDownloadProgress by remember { mutableFloatStateOf(0f) }
+    var availableRelease by remember { mutableStateOf<AppReleaseInfo?>(null) }
+    var updateStatusMessage by remember { mutableStateOf<String?>(null) }
 
     var drawerPendingSelectRemotes by remember { mutableStateOf<List<RcloneRemoteConfig>?>(null) }
     val pickConfLauncher = rememberLauncherForActivityResult(
@@ -672,6 +680,115 @@ fun VidLabDrawerContent(
                         }
                     }
                     0 -> {
+                        Text("APP UPDATES", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("VidLab Android", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Installed: v$installedVersion", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            if (!isCheckingUpdate && !isDownloadingUpdate) {
+                                                isCheckingUpdate = true
+                                                updateStatusMessage = null
+                                                scope.launch {
+                                                    AppUpdater.checkForUpdate(context)
+                                                        .onSuccess { info ->
+                                                            availableRelease = info
+                                                            updateStatusMessage = if (info.isNewer) {
+                                                                "New version ${info.tagName} is available!"
+                                                            } else {
+                                                                "You're on the latest version (${info.tagName})."
+                                                            }
+                                                        }
+                                                        .onFailure { err ->
+                                                            updateStatusMessage = "Update check failed: ${err.message}"
+                                                        }
+                                                    isCheckingUpdate = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !isCheckingUpdate && !isDownloadingUpdate,
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = Color(0xFF0A0E17)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            if (isCheckingUpdate) "Checking..." else "Check Updates",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                if (updateStatusMessage != null) {
+                                    Text(
+                                        text = updateStatusMessage!!,
+                                        color = if (availableRelease?.isNewer == true) AccentViolet else Color(0xFF94A3B8),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                val rel = availableRelease
+                                if (rel != null && rel.isNewer) {
+                                    if (rel.body.isNotBlank()) {
+                                        Text(
+                                            text = rel.body,
+                                            color = Color(0xFFCBD5E1),
+                                            fontSize = 11.sp,
+                                            maxLines = 5,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (isDownloadingUpdate) {
+                                        LinearProgressIndicator(
+                                            progress = { updateDownloadProgress },
+                                            color = AccentViolet,
+                                            trackColor = BorderPurple,
+                                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            if (!isDownloadingUpdate) {
+                                                isDownloadingUpdate = true
+                                                updateDownloadProgress = 0f
+                                                scope.launch {
+                                                    AppUpdater.downloadAndInstallApk(
+                                                        context = context,
+                                                        downloadUrl = rel.apkDownloadUrl,
+                                                        onProgress = { pct -> updateDownloadProgress = pct }
+                                                    ).onFailure { err ->
+                                                        updateStatusMessage = "Download failed: ${err.message}"
+                                                    }
+                                                    isDownloadingUpdate = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !isDownloadingUpdate,
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = Color(0xFF0A0E17)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth().height(38.dp)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            if (isDownloadingUpdate) "Downloading ${(updateDownloadProgress * 100).toInt()}%..." else "Download & Install ${rel.tagName}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Text("TRACKING & SYNC", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Card(colors = CardDefaults.cardColors(containerColor = SurfaceDark), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
