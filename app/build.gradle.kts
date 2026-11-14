@@ -21,6 +21,15 @@ android {
         versionName = "1.1.3"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("vidlab-release.jks")
+            storePassword = "vidlab2026"
+            keyAlias = "vidlab"
+            keyPassword = "vidlab2026"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -29,7 +38,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
