@@ -589,12 +589,16 @@ private fun ModernPlayerScreen(
                     if (!isLocked) {
                         var isLeftSide = true
                         var volumeAccum = 0f
+                        var ignoreVerticalDrag = false
                         detectVerticalDragGestures(
                             onDragStart = { startOffset ->
+                                val edgeGuardPx = (size.height * 0.15f).coerceIn(80f, 160f)
+                                ignoreVerticalDrag = startOffset.y < edgeGuardPx || startOffset.y > (size.height - edgeGuardPx)
                                 isLeftSide = startOffset.x < size.width / 2f
                                 volumeAccum = 0f
                             },
                             onVerticalDrag = { change, dragAmount ->
+                                if (ignoreVerticalDrag) return@detectVerticalDragGestures
                                 change.consume()
                                 val deltaFraction = -dragAmount / (size.height.toFloat().coerceAtLeast(1f))
                                 if (isLeftSide) {
@@ -752,7 +756,7 @@ private fun ModernPlayerScreen(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = "Unlock Screen",
-                    tint = Color(0xFF8B85CF)
+                    tint = Color.White
                 )
             }
         }
