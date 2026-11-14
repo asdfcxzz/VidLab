@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
@@ -579,7 +580,11 @@ fun MediaDetailScreen(
                     val epProgress = progressStore.getProgress(ep.file.path)
 
                     val isSelected = ep.file.path in selectedEpisodePaths
+                    val isSavedOffline = remember(ep.file.path, DownloadTaskManager.tasks.size) {
+                        DownloadTaskManager.findDownloadedFile(context, ep.file.path) != null
+                    }
                     EpisodeCard(
+                        isSavedOffline = isSavedOffline,
                         episodeTitle = cleanEpisodeName,
                         seasonNumber = ep.seasonNumber,
                         episodeNumber = ep.episodeNumber,
@@ -834,6 +839,7 @@ private fun EpisodeCard(
     thumbnailUrl: String?,
     fileSize: String,
     progress: WatchProgress?,
+    isSavedOffline: Boolean = false,
     selectionMode: Boolean = false,
     isSelected: Boolean = false,
     onPlayClick: () -> Unit,
@@ -886,10 +892,10 @@ private fun EpisodeCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "S${seasonNumber}E${episodeNumber} • $fileSize", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                    if (remember(ep.file.path, DownloadTaskManager.tasks.size) { DownloadTaskManager.findDownloadedFile(context, ep.file.path) != null }) {
+                    if (isSavedOffline) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
-                            imageVector = Icons.Default.DownloadDone,
+                            imageVector = Icons.Default.OfflinePin,
                             contentDescription = "Saved Offline",
                             tint = AccentViolet,
                             modifier = Modifier.size(14.dp)
