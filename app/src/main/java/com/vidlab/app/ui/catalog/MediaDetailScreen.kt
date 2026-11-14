@@ -245,14 +245,6 @@ fun MediaDetailScreen(
                                 )
                                 HorizontalDivider(color = BorderPurple, thickness = 0.8.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
-                                    text = { Text("Rename & Restructure", color = Color.White, fontSize = 13.sp) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onRenameClick()
-                                    }
-                                )
-                                DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                                     text = { Text("Fix Metadata Match", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
@@ -272,7 +264,7 @@ fun MediaDetailScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp)) },
+                                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp)) },
                                     text = { Text(if (item.isSeries) "Save All Episodes Offline" else "Save Movie Offline", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
                                         menuExpanded = false
@@ -558,7 +550,7 @@ fun MediaDetailScreen(
                                         selectionMode = false
                                     },
                                     enabled = selectedEpisodePaths.isNotEmpty(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -660,7 +652,7 @@ fun MediaDetailScreen(
                             color = DeepPurpleBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderPurple), modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Download, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
                                 Column {
                                     Text("Save Episode Offline", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                     Text("Store inside app for offline playback", color = Color(0xFF94A3B8), fontSize = 11.sp)
@@ -896,7 +888,7 @@ private fun EpisodeCard(
                     Text(text = "S${seasonNumber}E${episodeNumber} • $fileSize", color = Color(0xFF94A3B8), fontSize = 11.sp)
                     if (progress?.watched == true) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "• Watched", color = Color(0xFF4CAF50), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text(text = "• Watched", color = AccentViolet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -905,7 +897,7 @@ private fun EpisodeCard(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = "Toggle Watched",
-                        tint = if (progress?.watched == true) Color(0xFF4CAF50) else Color(0xFF4A4266),
+                        tint = if (progress?.watched == true) AccentViolet else Color(0xFF4A4266),
                         modifier = Modifier.size(18.dp)
                     )
                 }

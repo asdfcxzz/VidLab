@@ -285,6 +285,7 @@ private fun ModernPlayerScreen(
     var showAudioDialog by remember { mutableStateOf(false) }
     var showSubtitleDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var showDecoderDialog by remember { mutableStateOf(false) }
     var gestureOverlayText by remember { mutableStateOf<String?>(null) }
     var externalSubLabel by remember { mutableStateOf<String?>(null) }
 
@@ -485,8 +486,8 @@ private fun ModernPlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying, showAudioDialog, showSubtitleDialog, showSpeedDialog) {
-        if (controlsVisible && isPlaying && !showAudioDialog && !showSubtitleDialog && !showSpeedDialog) {
+    LaunchedEffect(controlsVisible, isPlaying, showAudioDialog, showSubtitleDialog, showSpeedDialog, showDecoderDialog) {
+        if (controlsVisible && isPlaying && !showAudioDialog && !showSubtitleDialog && !showSpeedDialog && !showDecoderDialog) {
             delay(4000L)
             controlsVisible = false
         }
@@ -990,26 +991,18 @@ private fun ModernPlayerScreen(
                         val decoderLabels = listOf("Auto", "HW", "SW")
                         val currentDecoderIdx = playerPrefs.decoderMode.coerceIn(0, 2)
                         Surface(
-                            onClick = {
-                                val nextMode = (currentDecoderIdx + 1) % 3
-                                if (activeFilePath.isNotBlank() && duration > 0L) {
-                                    WatchProgressStore(context).saveProgress(activeFilePath, player.currentPosition, duration)
-                                }
-                                playerPrefs.decoderMode = nextMode
-                                android.widget.Toast.makeText(context, "Decoder: ${decoderLabels[nextMode]}", android.widget.Toast.LENGTH_SHORT).show()
-                                activity?.recreate()
-                            },
+                            onClick = { showDecoderDialog = true },
                             color = hudCircleBg,
                             shape = CircleShape,
                             modifier = Modifier.height(42.dp)
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 12.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp)
                             ) {
                                 Text(
                                     text = decoderLabels[currentDecoderIdx],
-                                    color = Color(0xFF8B85CF),
+                                    color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -1044,7 +1037,7 @@ private fun ModernPlayerScreen(
                         }
 
                         Surface(
-                            onClick = { resizeModeIndex = (resizeModeIndex + 1) % resizeModes.size },
+                            onClick = { customScale = 1f; customOffset = Offset.Zero; resizeModeIndex = (resizeModeIndex + 1) % resizeModes.size },
                             color = hudCircleBg,
                             shape = CircleShape,
                             modifier = Modifier.height(42.dp)
@@ -1334,6 +1327,56 @@ private fun ModernPlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showSubtitleDialog = false }) {
+                        Text("Close", color = Color(0xFF8B85CF), fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
+        if (showDecoderDialog) {
+            val decoderOptions = listOf(
+                0 to "Auto (Recommended)",
+                1 to "HW (Hardware MediaCodec)",
+                2 to "SW (Software / FFmpeg)"
+            )
+            val currentMode = playerPrefs.decoderMode.coerceIn(0, 2)
+            AlertDialog(
+                onDismissRequest = { showDecoderDialog = false },
+                containerColor = Color(0xFF131A29),
+                title = { Text("Video Decoder", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for ((modeIdx, label) in decoderOptions) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        showDecoderDialog = false
+                                        if (modeIdx != currentMode) {
+                                            if (activeFilePath.isNotBlank() && duration > 0L) {
+                                                WatchProgressStore(context).saveProgress(activeFilePath, player.currentPosition, duration)
+                                            }
+                                            playerPrefs.decoderMode = modeIdx
+                                            activity?.recreate()
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp, horizontal = 6.dp)
+                            ) {
+                                RadioButton(
+                                    selected = modeIdx == currentMode,
+                                    onClick = null,
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8B85CF))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(label, color = Color.White, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDecoderDialog = false }) {
                         Text("Close", color = Color(0xFF8B85CF), fontWeight = FontWeight.Bold)
                     }
                 }
